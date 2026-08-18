@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+:root { --background: #09111d; --foreground: #f8fafc; }
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* { box-sizing: border-box; }
+body { background: var(--background); color: var(--foreground); font-family: Arial, Helvetica, sans-serif; }
+.priority { border-radius: 9999px; padding: 0.2rem 0.55rem; font-size: 0.7rem; font-weight: 700; }
+.priority-low { background: #1e3a5f; color: #bfdbfe; }.priority-medium { background: #3c315e; color: #ddd6fe; }.priority-high { background: #713b13; color: #fed7aa; }.priority-critical { background: #6b1e35; color: #fecdd3; }
+.action-button { border-radius: 0.5rem; padding: 0.4rem 0.6rem; font-size: 0.75rem; font-weight: 700; transition: opacity 150ms; }.action-button:disabled { cursor: wait; opacity: 0.5; }.approve { background: #22d3ee; color: #083344; }.reject { border: 1px solid #475569; color: #cbd5e1; }
