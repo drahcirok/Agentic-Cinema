@@ -4,3 +4,6 @@ __pycache__/
 *.py[cod]
 node_modules/
 .next/
+
+# FrameFlow – local SQLite databases (keep the folder via backend/data/.gitkeep)
+backend/data/*.db

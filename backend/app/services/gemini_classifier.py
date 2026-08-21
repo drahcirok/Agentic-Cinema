@@ -1,6 +1,5 @@
 from google import genai
 from google.genai import types
-import vertexai
 
 from app.core.config import settings
 from app.models.ingestion import GeminiClassification
@@ -13,17 +12,35 @@ class GeminiConfigurationError(Exception):
 
 class GeminiClassifier:
     def _create_client(self) -> genai.Client:
-        if settings.gemini_backend == "vertex_ai":
-            if not settings.google_cloud_project:
-                raise GeminiConfigurationError("Falta GOOGLE_CLOUD_PROJECT para usar Vertex AI.")
-            vertexai.init(project=settings.google_cloud_project, location=settings.google_cloud_location)
+        """
+        Crea el cliente de Gemini según GEMINI_BACKEND:
+
+        - "vertex_ai": usa Application Default Credentials (ADC) automáticamente.
+          Requiere GOOGLE_CLOUD_PROJECT y GOOGLE_CLOUD_LOCATION=global.
+          No se necesita ninguna API key; las credenciales las provee gcloud ADC
+          o el service account del entorno (Cloud Run, GKE, etc.).
+
+        - "developer": usa GEMINI_API_KEY para desarrollo local.
+        """
+        try:
+            settings.validate_vertex_ai()
+        except ValueError as exc:
+            raise GeminiConfigurationError(str(exc)) from exc
+
+        if settings.is_vertex_ai:
+            # google-genai ≥ 1.0 resuelve ADC automáticamente cuando vertexai=True.
+            # No se llama a vertexai.init() para evitar efectos secundarios globales.
             return genai.Client(
                 vertexai=True,
                 project=settings.google_cloud_project,
                 location=settings.google_cloud_location,
             )
+
+        # Modo developer
         if not settings.gemini_api_key:
-            raise GeminiConfigurationError("Falta GEMINI_API_KEY en backend/.env.")
+            raise GeminiConfigurationError(
+                "GEMINI_BACKEND=developer requiere GEMINI_API_KEY."
+            )
         return genai.Client(api_key=settings.gemini_api_key)
 
     def classify(self, shot_id: str, director_note: str) -> TicketCreate:
