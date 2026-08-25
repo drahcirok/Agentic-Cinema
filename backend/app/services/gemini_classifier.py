@@ -1,8 +1,18 @@
-"""Gemini classifier — text-only and multimodal (text + frame) variants.
+"""Gemini classifier — eligibility check + classification in a single call.
 
-Both variants use Function Calling (mode=ANY) so structured output is
-guaranteed.  The multimodal path sends the image as Part.from_bytes and
-extends the prompt to request explicit attribution (note / frame / both).
+The classifier uses a single Function Calling declaration that returns:
+  - requires_postproduction (bool)      — always present
+  - department / priority               — present only when requires_postproduction=True
+  - ai_rationale (str)                  — always present
+  - rejection_reason (str | None)       — present when requires_postproduction=False
+
+Both classify() and classify_with_image() return either:
+  - TicketCreate          — when the note requires post-production work
+  - EligibilityRejection  — when it does not (no SQLite record created)
+
+The multimodal path sends image bytes as Part.from_bytes alongside the text
+prompt and extends ai_rationale to mention whether the decision was based on
+the note, the frame, or both.
 """
 
 from __future__ import annotations
@@ -11,48 +21,78 @@ from google import genai
 from google.genai import types
 
 from app.core.config import settings
-from app.models.ingestion import GeminiClassification
+from app.models.ingestion import EligibilityRejection, GeminiDecision
 from app.models.ticket import TicketCreate
 
 # ---------------------------------------------------------------------------
-# Shared function declaration
+# Function declaration — single declaration used by all classify paths
 # ---------------------------------------------------------------------------
 
-_ROUTE_TICKET_DECLARATION = types.FunctionDeclaration(
-    name="route_postproduction_ticket",
-    description="Clasifica una nota del director para crear un ticket de postproducción.",
+_EVALUATE_DECLARATION = types.FunctionDeclaration(
+    name="evaluate_postproduction_request",
+    description=(
+        "Evalúa si una nota del director requiere trabajo real de postproducción. "
+        "Si lo requiere, clasifica el departamento y la prioridad. "
+        "Si no, explica por qué no aplica."
+    ),
     parameters={
         "type": "object",
         "properties": {
+            "requires_postproduction": {
+                "type": "boolean",
+                "description": (
+                    "true si la nota exige trabajo de VFX, color, sonido o edición. "
+                    "false para notas de logística, catering, transporte, horarios, "
+                    "felicitaciones, conversaciones no relacionadas o cualquier pedido "
+                    "que no implique trabajo real de postproducción."
+                ),
+            },
             "department": {
                 "type": "string",
                 "enum": ["vfx", "color", "sound", "editorial"],
-                "description": "Departamento principal responsable.",
+                "description": (
+                    "Departamento principal responsable. "
+                    "Obligatorio cuando requires_postproduction es true. "
+                    "Omite este campo cuando requires_postproduction es false."
+                ),
             },
             "priority": {
                 "type": "string",
                 "enum": ["low", "medium", "high", "critical"],
-                "description": "Prioridad según impacto en la entrega.",
+                "description": (
+                    "Prioridad según impacto en la entrega. "
+                    "Obligatorio cuando requires_postproduction es true. "
+                    "Omite este campo cuando requires_postproduction es false."
+                ),
             },
             "ai_rationale": {
                 "type": "string",
                 "description": (
-                    "Motivo breve y específico de la clasificación en español. "
-                    "Indica explícitamente si la decisión se basa en la nota del director, "
-                    "en el fotograma o en ambos."
+                    "Explicación breve y concreta en español. "
+                    "Si se analiza un fotograma, indica explícitamente si la decisión "
+                    "se basa en la NOTA, el FOTOGRAMA o en AMBOS."
+                ),
+            },
+            "rejection_reason": {
+                "type": "string",
+                "description": (
+                    "Categoría de rechazo cuando requires_postproduction es false. "
+                    "Ejemplos: 'logística', 'catering', 'transporte', 'horarios', "
+                    "'felicitaciones', 'asunto no relacionado con postproducción'. "
+                    "Omite este campo cuando requires_postproduction es true."
                 ),
             },
         },
-        "required": ["department", "priority", "ai_rationale"],
+        "required": ["requires_postproduction", "ai_rationale"],
     },
 )
 
 _GENERATE_CONFIG = types.GenerateContentConfig(
-    tools=[types.Tool(function_declarations=[_ROUTE_TICKET_DECLARATION])],
+    tools=[types.Tool(function_declarations=[_EVALUATE_DECLARATION])],
     tool_config=types.ToolConfig(
         function_calling_config=types.FunctionCallingConfig(
             mode="ANY",
-            allowed_function_names=["route_postproduction_ticket"],
+            allowed_function_names=["evaluate_postproduction_request"],
         )
     ),
 )
@@ -63,9 +103,19 @@ _GENERATE_CONFIG = types.GenerateContentConfig(
 
 _TEXT_ONLY_PROMPT = """\
 Eres el Ingestor Analítico de FrameFlow, una herramienta de postproducción cinematográfica.
-Analiza esta nota de dirección y clasifícala en exactamente un departamento: vfx, color,
-sound o editorial. Asigna prioridad low, medium, high o critical. Explica el motivo en
-español, de manera concreta. No ejecutes cambios ni inventes información.
+
+Primero decide si la nota requiere trabajo real de postproducción (VFX, color, sonido o edición).
+Notas de logística, catering, transporte, horarios, felicitaciones, conversaciones no relacionadas
+o cualquier pedido que no implique trabajo de VFX, color, sonido ni edición NO requieren postproducción.
+
+Si la nota SÍ requiere postproducción:
+  - Clasifícala en exactamente un departamento: vfx, color, sound o editorial.
+  - Asigna prioridad: low, medium, high o critical.
+  - Explica el motivo concreto en español.
+
+Si la nota NO requiere postproducción:
+  - Indica la razón específica (ej. logística, catering, horarios, etc.).
+  - No inventes trabajo de postproducción donde no lo hay.
 
 Toma: {shot_id}
 Nota del director: {director_note}
@@ -74,14 +124,20 @@ Nota del director: {director_note}
 _MULTIMODAL_PROMPT = """\
 Eres el Ingestor Analítico de FrameFlow, una herramienta de postproducción cinematográfica.
 Se te proporciona una nota de dirección y el fotograma correspondiente a esa toma.
-Analiza ambas fuentes y clasifica la tarea en exactamente un departamento: vfx, color,
-sound o editorial. Asigna prioridad low, medium, high o critical.
 
-En el campo ai_rationale, explica en español de forma concreta:
-  - si tu clasificación se basa principalmente en la NOTA, en el FOTOGRAMA o en AMBOS,
-  - qué elemento concreto de cada fuente influyó en la decisión.
+Primero decide si la nota (y/o el fotograma) requiere trabajo real de postproducción (VFX, color,
+sonido o edición). Notas de logística, catering, transporte, horarios, felicitaciones, conversaciones
+no relacionadas o cualquier pedido que no implique trabajo de VFX, color, sonido ni edición
+NO requieren postproducción.
 
-No ejecutes cambios ni inventes información que no esté presente en las fuentes.
+Si SÍ requiere postproducción:
+  - Clasifícala en exactamente un departamento: vfx, color, sound o editorial.
+  - Asigna prioridad: low, medium, high o critical.
+  - En ai_rationale, indica si la decisión se basa en la NOTA, el FOTOGRAMA o en AMBOS.
+
+Si NO requiere postproducción:
+  - Indica la razón específica.
+  - No inventes trabajo de postproducción.
 
 Toma: {shot_id}
 Nota del director: {director_note}
@@ -99,8 +155,6 @@ class GeminiClassifier:
 
         - "vertex_ai": usa Application Default Credentials (ADC) automáticamente.
           Requiere GOOGLE_CLOUD_PROJECT y GOOGLE_CLOUD_LOCATION=global.
-          No se necesita ninguna API key; las credenciales las provee gcloud ADC
-          o el service account del entorno (Cloud Run, GKE, etc.).
 
         - "developer": usa GEMINI_API_KEY para desarrollo local.
         """
@@ -123,39 +177,70 @@ class GeminiClassifier:
         return genai.Client(api_key=settings.gemini_api_key)
 
     # ------------------------------------------------------------------
-    # Internal helper
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    def _extract_classification(self, response: types.GenerateContentResponse) -> GeminiClassification:
+    def _extract_decision(
+        self, response: types.GenerateContentResponse
+    ) -> GeminiDecision:
         """Pull the function-call args out of a Gemini response."""
         function_call = next(
             (
                 part.function_call
                 for part in response.candidates[0].content.parts
                 if part.function_call is not None
-                and part.function_call.name == "route_postproduction_ticket"
+                and part.function_call.name == "evaluate_postproduction_request"
             ),
             None,
         )
         if function_call is None:
             raise RuntimeError("Gemini no devolvió la llamada de función esperada.")
-        return GeminiClassification.model_validate(function_call.args)
+        return GeminiDecision.model_validate(function_call.args)
+
+    def _decision_to_result(
+        self, decision: GeminiDecision, shot_id: str, director_note: str
+    ) -> TicketCreate | EligibilityRejection:
+        """Convert a GeminiDecision into either a TicketCreate or EligibilityRejection."""
+        if not decision.requires_postproduction:
+            return EligibilityRejection(
+                requires_postproduction=False,
+                ai_rationale=decision.ai_rationale,
+                rejection_reason=decision.rejection_reason,
+            )
+
+        # requires_postproduction=True: department and priority must be present.
+        if decision.department is None or decision.priority is None:
+            raise RuntimeError(
+                "Gemini indicó requires_postproduction=True pero omitió department o priority."
+            )
+
+        return TicketCreate(
+            shot_id=shot_id,
+            director_note=director_note,
+            department=decision.department,
+            priority=decision.priority,
+            ai_rationale=decision.ai_rationale,
+        )
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def classify(self, shot_id: str, director_note: str) -> TicketCreate:
-        """Text-only classification (backward-compatible entry point)."""
+    def classify(
+        self, shot_id: str, director_note: str
+    ) -> TicketCreate | EligibilityRejection:
+        """Text-only eligibility check + classification."""
         client = self._create_client()
-        prompt = _TEXT_ONLY_PROMPT.format(shot_id=shot_id, director_note=director_note).strip()
+        prompt = _TEXT_ONLY_PROMPT.format(
+            shot_id=shot_id, director_note=director_note
+        ).strip()
         response = client.models.generate_content(
             model=settings.gemini_model,
             contents=prompt,
             config=_GENERATE_CONFIG,
         )
-        classification = self._extract_classification(response)
-        return TicketCreate(shot_id=shot_id, director_note=director_note, **classification.model_dump())
+        decision = self._extract_decision(response)
+        return self._decision_to_result(decision, shot_id, director_note)
 
     def classify_with_image(
         self,
@@ -163,8 +248,8 @@ class GeminiClassifier:
         director_note: str,
         image_bytes: bytes,
         mime_type: str,
-    ) -> TicketCreate:
-        """Multimodal classification: note + raw image bytes.
+    ) -> TicketCreate | EligibilityRejection:
+        """Multimodal eligibility check + classification: note + raw image bytes.
 
         The image is sent as an inline Part (no Cloud Storage required).
         ``mime_type`` must be one of the values in ALLOWED_IMAGE_MIME_TYPES.
@@ -182,8 +267,8 @@ class GeminiClassifier:
             contents=contents,
             config=_GENERATE_CONFIG,
         )
-        classification = self._extract_classification(response)
-        return TicketCreate(shot_id=shot_id, director_note=director_note, **classification.model_dump())
+        decision = self._extract_decision(response)
+        return self._decision_to_result(decision, shot_id, director_note)
 
 
 gemini_classifier = GeminiClassifier()

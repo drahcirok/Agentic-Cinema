@@ -72,18 +72,34 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
         // No Content-Type header — the browser sets it with the multipart boundary.
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail ?? "No se pudo procesar la nota.");
 
-      onCreated(data as Ticket);
-      setShotId("");
-      setDirectorNote("");
-      removeFrame();
-      setMessage({
-        text: frame
-          ? "Gemini analizó la nota y el fotograma. Ticket pendiente de revisión."
-          : "Gemini creó un ticket pendiente de revisión.",
-        ok: true,
-      });
+      if (!response.ok) {
+        throw new Error(data.detail ?? "No se pudo procesar la nota.");
+      }
+
+      if (response.status === 201) {
+        // Post-production required — ticket was created, add to Kanban.
+        onCreated(data as Ticket);
+        setShotId("");
+        setDirectorNote("");
+        removeFrame();
+        setMessage({
+          text: frame
+            ? "Gemini analizó la nota y el fotograma. Ticket pendiente de revisión."
+            : "Gemini creó un ticket pendiente de revisión.",
+          ok: true,
+        });
+      } else {
+        // HTTP 200: requires_postproduction=false — no ticket created.
+        const reason: string = data.rejection_reason ?? data.ai_rationale ?? "";
+        setShotId("");
+        setDirectorNote("");
+        removeFrame();
+        setMessage({
+          text: `No se creó ticket: esta nota no requiere postproducción.${reason ? ` ${reason}` : ""}`,
+          ok: false,
+        });
+      }
     } catch (error) {
       setMessage({
         text: error instanceof Error ? error.message : "No se pudo procesar la nota.",
@@ -181,9 +197,17 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
         )}
       </div>
 
-      {/* Status message */}
+      {/* Status message — amber for informational non-errors (no ticket needed) */}
       {message && (
-        <p className={`mt-3 text-xs ${message.ok ? "text-slate-300" : "text-rose-300"}`}>
+        <p
+          className={`mt-3 text-xs ${
+            message.ok
+              ? "text-slate-300"
+              : message.text.startsWith("No se creó ticket:")
+              ? "text-amber-300"
+              : "text-rose-300"
+          }`}
+        >
           {message.text}
         </p>
       )}
