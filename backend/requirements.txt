@@ -2,6 +2,10 @@ sqlalchemy>=2.0,<3.0
 python-multipart>=0.0.9
 google-cloud-storage>=3.10,<4.0
 google-cloud-firestore>=2.21,<3.0
+firebase-admin>=6.6,<7.0
+# Se fija a la versión validada localmente. Evita diferencias de routing gRPC
+# entre el entorno de desarrollo y la imagen generada por Cloud Build.
+google-api-core==2.34.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2

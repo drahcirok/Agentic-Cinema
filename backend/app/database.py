@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
@@ -20,7 +20,6 @@ from app.core.config import settings
 
 _HERE = Path(__file__).resolve().parent          # backend/app/
 _DATA_DIR = _HERE.parent / "data"                # backend/data/
-_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DATABASE_URL = f"sqlite:///{_DATA_DIR / 'frameflow.db'}"
 
@@ -28,16 +27,23 @@ DATABASE_URL = f"sqlite:///{_DATA_DIR / 'frameflow.db'}"
 # Engine & session factory
 # ---------------------------------------------------------------------------
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-)
-
-SessionLocal = sessionmaker(
-    bind=engine,
-    autocommit=False,
-    autoflush=False,
-)
+if settings.is_firestore:
+    # Cloud Run uses Firestore. Do not create the local data directory or open
+    # a SQLite connection: /app is read-only for the unprivileged container
+    # user and SQLite would be ephemeral anyway.
+    engine = None
+    SessionLocal = None
+else:
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+    )
+    SessionLocal = sessionmaker(
+        bind=engine,
+        autocommit=False,
+        autoflush=False,
+    )
 
 # ---------------------------------------------------------------------------
 # Declarative base (shared by all ORM models)
@@ -59,6 +65,7 @@ def get_db() -> Generator[Session | None, None, None]:
         yield None
         return
 
+    assert SessionLocal is not None
     db = SessionLocal()
     try:
         yield db
@@ -73,7 +80,21 @@ def get_db() -> Generator[Session | None, None, None]:
 
 def init_db() -> None:
     """Create all tables registered on Base.metadata (idempotent)."""
+    if settings.is_firestore:
+        return
+
     # Import models so their Table definitions are registered before create_all.
     import app.models.ticket_record  # noqa: F401
 
+    assert engine is not None
     Base.metadata.create_all(bind=engine)
+
+    # SQLite no aplica ALTER TABLE al añadir columnas mediante create_all().
+    # Esta migración pequeña mantiene los datos locales existentes al incorporar
+    # owner_id para el aislamiento por supervisor.
+    columns = {column["name"] for column in inspect(engine).get_columns("postproduction_tickets")}
+    if "owner_id" not in columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE postproduction_tickets ADD COLUMN owner_id VARCHAR(128)")
+            )

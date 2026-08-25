@@ -1,0 +1,12 @@
+# Valores no secretos del backend desplegado en Cloud Run.
+# Las credenciales se obtienen mediante el service account adjunto al servicio.
+GEMINI_BACKEND: vertex_ai
+GEMINI_MODEL: gemini-2.5-flash
+GOOGLE_CLOUD_PROJECT: project-06eb2251-0139-4d31-b86
+GOOGLE_CLOUD_LOCATION: global
+GOOGLE_CLOUD_STORAGE_BUCKET: frameflow-videos-drahcirok
+TICKET_STORAGE_BACKEND: firestore
+FIRESTORE_COLLECTION: postproduction_tickets
+FIRESTORE_DATABASE_ID: "(default)"
+AUTH_REQUIRED: "true"
+CORS_ALLOWED_ORIGINS: http://localhost:3000

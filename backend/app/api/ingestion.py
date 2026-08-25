@@ -40,6 +40,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.core.security import CurrentUser, get_current_user
 from app.models.ingestion import (
     ALLOWED_IMAGE_MIME_TYPES,
     ALLOWED_VIDEO_MIME_TYPES,
@@ -79,6 +80,7 @@ def _media_type(request: Request) -> str:
 async def ingest_director_note(
     request: Request,
     repo: TicketDataRepository = Depends(_repo),
+    user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Evalúa si la nota requiere postproducción y, si es así, crea el ticket.
 
@@ -309,7 +311,7 @@ async def ingest_director_note(
             content=result.model_dump(),
         )
 
-    ticket = repo.create(result)
+    ticket = repo.create(result, user.uid)
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=Ticket.model_validate(ticket).model_dump(mode="json"),

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DirectorNoteForm from "@/components/director-note-form";
 import EditTicketDialog from "@/components/edit-ticket-dialog";
+import { useAuth } from "@/components/auth-provider";
 
 type Department = "vfx" | "color" | "sound" | "editorial";
 type Priority = "low" | "medium" | "high" | "critical";
@@ -34,13 +35,14 @@ const priorityLabel: Record<Priority, string> = {
   low: "Baja", medium: "Media", high: "Alta", critical: "Crítica",
 };
 
-async function fetchTickets(): Promise<Ticket[]> {
-  const response = await fetch(`${apiBaseUrl}/tickets`);
+async function fetchTickets(headers: Record<string, string>): Promise<Ticket[]> {
+  const response = await fetch(`${apiBaseUrl}/tickets`, { headers });
   if (!response.ok) throw new Error("No se pudieron cargar los tickets.");
   return response.json();
 }
 
 export default function Home() {
+  const { user, loading: authLoading, configured, signIn, signOut, getAuthHeaders } = useAuth();
   const [tickets, setTickets]       = useState<Ticket[]>([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
@@ -50,20 +52,21 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      setTickets(await fetchTickets());
+      setTickets(await fetchTickets(await getAuthHeaders()));
     } catch {
       setError("No se pudo conectar con el backend. Confirma que Uvicorn esté activo en el puerto 8000.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   useEffect(() => {
     let isCurrent = true;
 
     async function loadInitialTickets() {
+      if (!user) return;
       try {
-        const initialTickets = await fetchTickets();
+        const initialTickets = await fetchTickets(await getAuthHeaders());
         if (isCurrent) setTickets(initialTickets);
       } catch {
         if (isCurrent) {
@@ -76,14 +79,14 @@ export default function Home() {
 
     void loadInitialTickets();
     return () => { isCurrent = false; };
-  }, []);
+  }, [user, getAuthHeaders]);
 
   async function reviewTicket(ticketId: string, decision: "approve" | "reject") {
     setProcessingId(ticketId);
     try {
       const response = await fetch(`${apiBaseUrl}/tickets/${ticketId}/review`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({ decision }),
       });
       if (!response.ok) throw new Error();
@@ -107,6 +110,27 @@ export default function Home() {
     [tickets]
   );
 
+  if (authLoading) {
+    return <main className="grid min-h-screen place-items-center bg-[#09111d] text-slate-300">Comprobando sesión…</main>;
+  }
+
+  if (!configured) {
+    return <main className="grid min-h-screen place-items-center bg-[#09111d] p-6 text-center text-slate-300">Firebase Authentication aún no está configurado para este entorno.</main>;
+  }
+
+  if (!user) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#09111d] p-6 text-slate-100">
+        <section className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#101b2b] p-8 text-center">
+          <p className="text-xs font-bold tracking-[0.22em] text-cyan-300">FRAMEFLOW / ACCESS CONTROL</p>
+          <h1 className="mt-4 text-3xl font-semibold text-white">Sala de decisiones privada</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-400">Inicia sesión con tu cuenta de Google para ver y gestionar únicamente los tickets de tu producción.</p>
+          <button onClick={() => void signIn()} className="mt-6 rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950">Continuar con Google</button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#09111d] px-5 py-8 text-slate-100 sm:px-8 lg:px-12">
       <section className="mx-auto max-w-7xl">
@@ -123,11 +147,14 @@ export default function Home() {
               Revisa las notas analizadas por IA y valida el flujo de trabajo antes de asignar artistas.
             </p>
           </div>
+          <div className="flex items-end gap-4">
+            <div className="hidden text-right text-xs text-slate-400 sm:block"><p>{user.displayName ?? user.email}</p><button onClick={() => void signOut()} className="mt-1 text-cyan-300 hover:underline">Cerrar sesión</button></div>
           <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-5 py-3">
             <p className="text-xs font-medium uppercase tracking-wider text-cyan-200">
               Pendientes de aprobación
             </p>
             <p className="mt-1 text-3xl font-semibold text-white">{pendingCount}</p>
+          </div>
           </div>
         </header>
 

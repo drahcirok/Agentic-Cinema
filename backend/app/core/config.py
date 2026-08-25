@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     # porque el sistema de archivos de sus instancias es efímero.
     ticket_storage_backend: str = "sqlite"
     firestore_collection: str = "postproduction_tickets"
+    # ID de la base Native Mode creada para FrameFlow. Google reserva
+    # "(default)" para la base predeterminada del proyecto.
+    firestore_database_id: str = "(default)"
+
+    # --- Autenticación de supervisores ---
+    # Al activarse, todas las rutas de tickets exigen un Firebase ID token.
+    # Firebase Admin usa ADC en Cloud Run, igual que Firestore y Vertex AI.
+    auth_required: bool = False
 
     # Lista separada por comas. En producción contiene el dominio de Vercel.
     cors_allowed_origins: str = "http://localhost:3000"
@@ -78,6 +86,15 @@ class Settings(BaseSettings):
             )
         if not self.firestore_collection.strip():
             raise ValueError("FIRESTORE_COLLECTION no puede estar vacío.")
+        if not self.firestore_database_id.strip():
+            raise ValueError("FIRESTORE_DATABASE_ID no puede estar vacío.")
+
+    def validate_auth(self) -> None:
+        """Valida únicamente lo necesario cuando se protege la API con Firebase."""
+        if self.auth_required and not self.google_cloud_project:
+            raise ValueError(
+                "GOOGLE_CLOUD_PROJECT es requerido cuando AUTH_REQUIRED=true."
+            )
 
     @property
     def cors_origins(self) -> list[str]:

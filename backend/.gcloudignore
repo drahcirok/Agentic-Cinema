@@ -1,0 +1,8 @@
+# Evita subir dependencias y datos locales al build remoto.
+.env
+.venv/
+.pytest_cache/
+__pycache__/
+data/
+tests/
+*.py[cod]

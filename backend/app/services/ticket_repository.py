@@ -24,11 +24,11 @@ class TicketNotFoundError(Exception):
 class TicketDataRepository(Protocol):
     """Common persistence operations exposed to FastAPI endpoints."""
 
-    def create(self, payload: TicketCreate) -> Ticket: ...
+    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor") -> Ticket: ...
 
-    def review(self, ticket_id: UUID, review: TicketReview) -> Ticket: ...
+    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor") -> Ticket: ...
 
-    def list(self) -> list[Ticket]: ...
+    def list(self, owner_id: str = "local-supervisor") -> list[Ticket]: ...
 
 
 def _record_to_ticket(record: TicketRecord) -> Ticket:
@@ -57,13 +57,14 @@ class TicketRepository:
     # Write
     # ------------------------------------------------------------------
 
-    def create(self, payload: TicketCreate) -> Ticket:
+    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor") -> Ticket:
         """Insert a new ticket and return the Pydantic representation."""
         from uuid import uuid4
 
         now = datetime.now(timezone.utc)
         record = TicketRecord(
             id=str(uuid4()),
+            owner_id=owner_id,
             shot_id=payload.shot_id,
             director_note=payload.director_note,
             department=str(payload.department),
@@ -79,10 +80,10 @@ class TicketRepository:
         self._db.refresh(record)
         return _record_to_ticket(record)
 
-    def review(self, ticket_id: UUID, review: TicketReview) -> Ticket:
+    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor") -> Ticket:
         """Apply a supervisor review decision and return the updated ticket."""
         record: TicketRecord | None = self._db.get(TicketRecord, str(ticket_id))
-        if record is None:
+        if record is None or record.owner_id != owner_id:
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
 
         if review.department is not None:
@@ -108,10 +109,11 @@ class TicketRepository:
     # Read
     # ------------------------------------------------------------------
 
-    def list(self) -> list[Ticket]:
+    def list(self, owner_id: str = "local-supervisor") -> list[Ticket]:
         """Return all tickets ordered by creation date descending."""
         records = (
             self._db.query(TicketRecord)
+            .filter(TicketRecord.owner_id == owner_id)
             .order_by(TicketRecord.created_at.desc())
             .all()
         )
@@ -130,7 +132,10 @@ class FirestoreTicketRepository:
         if self._client is None:
             from google.cloud import firestore
 
-            self._client = firestore.Client(project=settings.google_cloud_project)
+            self._client = firestore.Client(
+                project=settings.google_cloud_project,
+                database=settings.firestore_database_id,
+            )
         return self._client
 
     def _get_collection(self) -> object:
@@ -151,12 +156,13 @@ class FirestoreTicketRepository:
             updated_at=data["updated_at"],  # type: ignore[arg-type]
         )
 
-    def create(self, payload: TicketCreate) -> Ticket:
+    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor") -> Ticket:
         from uuid import uuid4
 
         ticket_id = uuid4()
         now = datetime.now(timezone.utc)
         data: dict[str, object] = {
+            "owner_id": owner_id,
             "shot_id": payload.shot_id,
             "director_note": payload.director_note,
             "department": str(payload.department),
@@ -170,10 +176,10 @@ class FirestoreTicketRepository:
         self._get_collection().document(str(ticket_id)).set(data)  # type: ignore[union-attr]
         return self._document_to_ticket(str(ticket_id), data)
 
-    def review(self, ticket_id: UUID, review: TicketReview) -> Ticket:
+    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor") -> Ticket:
         reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
         snapshot = reference.get()
-        if not snapshot.exists:
+        if not snapshot.exists or snapshot.to_dict().get("owner_id") != owner_id:
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
 
         changes: dict[str, object] = {"updated_at": datetime.now(timezone.utc)}
@@ -196,16 +202,15 @@ class FirestoreTicketRepository:
         data.update(changes)
         return self._document_to_ticket(str(ticket_id), data)
 
-    def list(self) -> list[Ticket]:
-        from google.cloud import firestore
-
-        documents = self._get_collection().order_by(  # type: ignore[union-attr]
-            "created_at", direction=firestore.Query.DESCENDING
-        ).stream()
-        return [
+    def list(self, owner_id: str = "local-supervisor") -> list[Ticket]:
+        # Sort in Python to avoid requiring a composite Firestore index for a
+        # first deployment. The collection is per-user and small in this demo.
+        documents = self._get_collection().where("owner_id", "==", owner_id).stream()  # type: ignore[union-attr]
+        tickets = [
             self._document_to_ticket(document.id, document.to_dict())
             for document in documents
         ]
+        return sorted(tickets, key=lambda ticket: ticket.created_at, reverse=True)
 
 
 def create_ticket_repository(db: Session | None = None) -> TicketDataRepository:

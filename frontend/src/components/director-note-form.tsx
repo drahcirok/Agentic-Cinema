@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useRef, useState } from "react";
+import { useAuth } from "@/components/auth-provider";
 
 type Ticket = {
   id: string;
@@ -19,6 +20,7 @@ const MAX_IMAGE_MB = 10;
 const MAX_VIDEO_MB = 50;
 
 export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ticket) => void }) {
+  const { getAuthHeaders } = useAuth();
   const [shotId, setShotId] = useState("");
   const [directorNote, setDirectorNote] = useState("");
 
@@ -124,6 +126,7 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
       const response = await fetch(`${apiBaseUrl}/ingestion/director-notes`, {
         method: "POST",
         body,
+        headers: await getAuthHeaders(),
         // No Content-Type header — the browser sets it with the multipart boundary.
       });
       const data = await response.json();

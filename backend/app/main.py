@@ -14,6 +14,7 @@ from app.database import init_db
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Validate storage and initialise SQLite only for local development."""
     settings.validate_ticket_storage()
+    settings.validate_auth()
     if not settings.is_firestore:
         init_db()
     yield

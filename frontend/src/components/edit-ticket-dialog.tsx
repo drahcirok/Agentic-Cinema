@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/components/auth-provider";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,6 +75,7 @@ export default function EditTicketDialog({
   ticket,
   onUpdated,
 }: EditTicketDialogProps) {
+  const { getAuthHeaders } = useAuth();
   const [open, setOpen] = useState(false);
 
   // Editable fields — initialised from current ticket values each time the
@@ -108,7 +110,7 @@ export default function EditTicketDialog({
     try {
       const res = await fetch(`${apiBaseUrl}/tickets/${ticket.id}/review`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({
           decision: "edit",
           department,

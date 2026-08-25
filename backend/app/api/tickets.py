@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.core.security import CurrentUser, get_current_user
 from app.models.ticket import Ticket, TicketCreate, TicketReview
 from app.services.ticket_repository import (
     TicketDataRepository,
@@ -22,15 +23,19 @@ def _repo(db: Session | None = Depends(get_db)) -> TicketDataRepository:
 async def create_ticket(
     payload: TicketCreate,
     repo: TicketDataRepository = Depends(_repo),
+    user: CurrentUser = Depends(get_current_user),
 ) -> Ticket:
     """Crea un ticket que queda pendiente de aprobación humana."""
-    return repo.create(payload)
+    return repo.create(payload, user.uid)
 
 
 @router.get("", response_model=list[Ticket])
-async def list_tickets(repo: TicketDataRepository = Depends(_repo)) -> list[Ticket]:
+async def list_tickets(
+    repo: TicketDataRepository = Depends(_repo),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[Ticket]:
     """Devuelve los tickets para las columnas del tablero Kanban."""
-    return repo.list()
+    return repo.list(user.uid)
 
 
 @router.patch("/{ticket_id}/review", response_model=Ticket)
@@ -38,9 +43,10 @@ async def review_ticket(
     ticket_id: UUID,
     review: TicketReview,
     repo: TicketDataRepository = Depends(_repo),
+    user: CurrentUser = Depends(get_current_user),
 ) -> Ticket:
     """Registra la aprobación, edición o rechazo del supervisor."""
     try:
-        return repo.review(ticket_id, review)
+        return repo.review(ticket_id, review, user.uid)
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error

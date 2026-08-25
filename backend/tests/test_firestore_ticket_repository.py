@@ -49,6 +49,17 @@ class FakeCollection:
         self.order_by_args = (field, direction)
         return self
 
+    def where(self, field: str, operator: str, value: object) -> "FakeCollection":
+        assert field == "owner_id"
+        assert operator == "=="
+        filtered = FakeCollection()
+        filtered.documents = {
+            document_id: data
+            for document_id, data in self.documents.items()
+            if data.get(field) == value
+        }
+        return filtered
+
     def stream(self) -> list[FakeSnapshot]:
         return [
             FakeSnapshot(document_id, data)
@@ -116,12 +127,14 @@ def test_approve_persists_and_list_returns_newest_first(repository: FirestoreTic
     newer_id = str(uuid4())
     collection = repository._get_collection()
     collection.document(older_id).set({
+        "owner_id": "local-supervisor",
         "shot_id": "SC01-SH001", "director_note": "Nota antigua", "department": "vfx",
         "priority": "medium", "status": "pending_review", "ai_rationale": None,
         "supervisor_note": None, "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
         "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     })
     collection.document(newer_id).set({
+        "owner_id": "local-supervisor",
         "shot_id": "SC01-SH002", "director_note": "Nota nueva", "department": "color",
         "priority": "high", "status": "pending_review", "ai_rationale": None,
         "supervisor_note": None, "created_at": datetime(2026, 1, 2, tzinfo=timezone.utc),
@@ -138,3 +151,12 @@ def test_approve_persists_and_list_returns_newest_first(repository: FirestoreTic
 def test_review_unknown_ticket_raises_not_found(repository: FirestoreTicketRepository) -> None:
     with pytest.raises(TicketNotFoundError):
         repository.review(uuid4(), TicketReview(decision=ReviewDecision.REJECT))
+
+
+def test_tickets_are_scoped_to_their_owner(repository: FirestoreTicketRepository) -> None:
+    alice_ticket = repository.create(_payload("ALICE-001"), owner_id="alice")
+    repository.create(_payload("BOB-001"), owner_id="bob")
+
+    assert [ticket.id for ticket in repository.list(owner_id="alice")] == [alice_ticket.id]
+    with pytest.raises(TicketNotFoundError):
+        repository.review(alice_ticket.id, TicketReview(decision=ReviewDecision.APPROVE), owner_id="bob")
