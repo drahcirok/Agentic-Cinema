@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # "global" es requerido para el endpoint global de Vertex AI Gen AI
     google_cloud_location: str = "global"
 
+    # --- Google Cloud Storage ---
+    # Nombre del bucket GCS donde se almacenan los videos de referencia.
+    # No contiene credenciales; el acceso usa ADC automáticamente.
+    # Requerido en producción (Cloud Run); opcional en desarrollo local.
+    google_cloud_storage_bucket: str | None = None
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @property
@@ -36,6 +42,13 @@ class Settings(BaseSettings):
         if self.is_vertex_ai and not self.google_cloud_project:
             raise ValueError(
                 "GOOGLE_CLOUD_PROJECT es requerido cuando GEMINI_BACKEND=vertex_ai."
+            )
+
+    def validate_storage(self) -> None:
+        """Lanza ValueError si la configuración de Cloud Storage está incompleta."""
+        if not self.google_cloud_storage_bucket:
+            raise ValueError(
+                "GOOGLE_CLOUD_STORAGE_BUCKET es requerido para subir videos."
             )
 
 
