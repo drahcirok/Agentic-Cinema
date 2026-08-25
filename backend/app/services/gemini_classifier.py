@@ -69,8 +69,8 @@ _EVALUATE_DECLARATION = types.FunctionDeclaration(
                 "type": "string",
                 "description": (
                     "Explicación breve y concreta en español. "
-                    "Si se analiza un fotograma, indica explícitamente si la decisión "
-                    "se basa en la NOTA, el FOTOGRAMA o en AMBOS."
+                    "Indica explícitamente si la decisión se basa en la NOTA, "
+                    "el FOTOGRAMA, el VIDEO o en una combinación de ellos."
                 ),
             },
             "rejection_reason": {
@@ -116,6 +116,29 @@ Si la nota SÍ requiere postproducción:
 Si la nota NO requiere postproducción:
   - Indica la razón específica (ej. logística, catering, horarios, etc.).
   - No inventes trabajo de postproducción donde no lo hay.
+
+Toma: {shot_id}
+Nota del director: {director_note}
+"""
+
+_VIDEO_PROMPT = """\
+Eres el Ingestor Analítico de FrameFlow, una herramienta de postproducción cinematográfica.
+Se te proporciona una nota de dirección y un video de referencia de la toma.
+
+Primero decide si la nota (y/o el video) requiere trabajo real de postproducción (VFX, color,
+sonido o edición). Notas de logística, catering, transporte, horarios, felicitaciones,
+conversaciones no relacionadas o cualquier pedido que no implique trabajo de VFX, color,
+sonido ni edición NO requieren postproducción.
+
+Si SÍ requiere postproducción:
+  - Clasifícala en exactamente un departamento: vfx, color, sound o editorial.
+  - Asigna prioridad: low, medium, high o critical.
+  - En ai_rationale, indica si la decisión se basa en la NOTA, el VIDEO o en AMBOS,
+    y qué elemento concreto de cada fuente influyó en la decisión.
+
+Si NO requiere postproducción:
+  - Indica la razón específica.
+  - No inventes trabajo de postproducción.
 
 Toma: {shot_id}
 Nota del director: {director_note}
@@ -260,6 +283,35 @@ class GeminiClassifier:
         ).strip()
         contents = [
             types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            types.Part.from_text(text=text_prompt),
+        ]
+        response = client.models.generate_content(
+            model=settings.gemini_model,
+            contents=contents,
+            config=_GENERATE_CONFIG,
+        )
+        decision = self._extract_decision(response)
+        return self._decision_to_result(decision, shot_id, director_note)
+
+    def classify_with_video(
+        self,
+        shot_id: str,
+        director_note: str,
+        gs_uri: str,
+        mime_type: str,
+    ) -> TicketCreate | EligibilityRejection:
+        """Multimodal eligibility check + classification: note + GCS video URI.
+
+        The video is referenced by its ``gs://`` URI and is NOT read into memory
+        by the backend; Gemini fetches it directly from Cloud Storage.
+        ``mime_type`` must be one of the values in ALLOWED_VIDEO_MIME_TYPES.
+        """
+        client = self._create_client()
+        text_prompt = _VIDEO_PROMPT.format(
+            shot_id=shot_id, director_note=director_note
+        ).strip()
+        contents = [
+            types.Part.from_uri(file_uri=gs_uri, mime_type=mime_type),
             types.Part.from_text(text=text_prompt),
         ]
         response = client.models.generate_content(

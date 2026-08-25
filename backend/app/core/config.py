@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #   "developer"  — usa GEMINI_API_KEY (modo local/desarrollo)
 #   "vertex_ai"  — usa Application Default Credentials de Google Cloud (producción)
 _VALID_BACKENDS = {"developer", "vertex_ai"}
+_VALID_TICKET_STORAGE_BACKENDS = {"sqlite", "firestore"}
 
 
 class Settings(BaseSettings):
@@ -25,6 +26,15 @@ class Settings(BaseSettings):
     # No contiene credenciales; el acceso usa ADC automáticamente.
     # Requerido en producción (Cloud Run); opcional en desarrollo local.
     google_cloud_storage_bucket: str | None = None
+
+    # --- Persistencia de tickets ---
+    # SQLite se conserva para desarrollo local. Cloud Run debe usar Firestore,
+    # porque el sistema de archivos de sus instancias es efímero.
+    ticket_storage_backend: str = "sqlite"
+    firestore_collection: str = "postproduction_tickets"
+
+    # Lista separada por comas. En producción contiene el dominio de Vercel.
+    cors_allowed_origins: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -50,6 +60,29 @@ class Settings(BaseSettings):
             raise ValueError(
                 "GOOGLE_CLOUD_STORAGE_BUCKET es requerido para subir videos."
             )
+
+    @property
+    def is_firestore(self) -> bool:
+        return self.ticket_storage_backend == "firestore"
+
+    def validate_ticket_storage(self) -> None:
+        """Valida la configuración de persistencia sin exponer credenciales."""
+        if self.ticket_storage_backend not in _VALID_TICKET_STORAGE_BACKENDS:
+            raise ValueError(
+                f"TICKET_STORAGE_BACKEND='{self.ticket_storage_backend}' no es válido. "
+                f"Valores permitidos: {sorted(_VALID_TICKET_STORAGE_BACKENDS)}."
+            )
+        if self.is_firestore and not self.google_cloud_project:
+            raise ValueError(
+                "GOOGLE_CLOUD_PROJECT es requerido cuando TICKET_STORAGE_BACKEND=firestore."
+            )
+        if not self.firestore_collection.strip():
+            raise ValueError("FIRESTORE_COLLECTION no puede estar vacío.")
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Normaliza orígenes CORS evitando entradas vacías."""
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
 
 settings = Settings()

@@ -46,11 +46,14 @@ Grant these at the BUCKET level (not project level) to follow least-privilege:
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from typing import TYPE_CHECKING
 
 from app.core.config import settings
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     # Avoid importing the heavy GCS SDK at module load time in tests that do
@@ -113,7 +116,11 @@ class VideoStorageService:
         bucket_name: str | None = None,
         client: "gcs_module.Client | None" = None,
     ) -> None:
-        self._bucket_name = bucket_name or settings.google_cloud_storage_bucket
+        # Use provided bucket_name when given (even ""), fall back to settings
+        # only when the argument is the sentinel None.
+        self._bucket_name = (
+            settings.google_cloud_storage_bucket if bucket_name is None else bucket_name
+        )
         self._client = client  # None → created lazily on first use
 
     # ------------------------------------------------------------------
@@ -185,54 +192,94 @@ class VideoStorageService:
     def delete_object(self, gs_uri: str) -> None:
         """Delete the GCS object identified by *gs_uri*.
 
-        This is a best-effort cleanup call.  If the object does not exist the
-        call is silently ignored so that retry logic and idempotent cleanups
-        work without special-casing.
+        This is a **best-effort, fire-and-forget** cleanup call — it never
+        raises to the caller under any circumstances.  All outcomes are logged
+        at WARNING level (object path + exception type only; no credentials,
+        tokens, video content or environment variables are ever recorded).
+
+        Idempotent: if the object no longer exists the call is silently ignored.
 
         Parameters
         ----------
         gs_uri:
             A ``gs://<bucket>/<object>`` URI returned by :meth:`upload_video`.
-
-        Raises
-        ------
-        StorageConfigurationError
-            If the bucket name is not configured.
-        ValueError
-            If *gs_uri* does not start with ``gs://`` or refers to a different
-            bucket than the one configured.
         """
-        if not gs_uri.startswith("gs://"):
-            raise ValueError(f"Invalid GCS URI: {gs_uri!r}. Must start with 'gs://'.")
+        # Derive a safe object_name early so we can use it in log messages even
+        # when URI parsing fails.  Default to the raw URI if parsing is not
+        # possible; the path component is still safe to log (no credentials).
+        object_name: str = gs_uri  # fallback before parsing
 
-        # Parse gs://bucket/object/name
-        without_scheme = gs_uri[len("gs://"):]
-        slash_pos = without_scheme.find("/")
-        if slash_pos == -1:
-            raise ValueError(f"Invalid GCS URI (no object path): {gs_uri!r}.")
-
-        uri_bucket = without_scheme[:slash_pos]
-        object_name = without_scheme[slash_pos + 1:]
-
-        # Validate bucket configuration before any GCS call.
-        if not self._bucket_name:
-            raise StorageConfigurationError(
-                "GOOGLE_CLOUD_STORAGE_BUCKET is not configured. "
-                "Set it in .env or as an environment variable."
-            )
-
-        if uri_bucket != self._bucket_name:
-            raise ValueError(
-                f"URI bucket {uri_bucket!r} does not match configured bucket "
-                f"{self._bucket_name!r}."
-            )
-
-        bucket = self._get_bucket()
-        blob = bucket.blob(object_name)
         try:
-            blob.delete()
-        except Exception:  # noqa: BLE001 — object may already be gone
-            pass
+            if not gs_uri.startswith("gs://"):
+                _log.warning(
+                    "GCS cleanup skipped: URI does not start with 'gs://' "
+                    "(uri type: %s).",
+                    type(gs_uri).__name__,
+                )
+                return
+
+            # Parse gs://bucket/object/name
+            without_scheme = gs_uri[len("gs://"):]
+            slash_pos = without_scheme.find("/")
+            if slash_pos == -1:
+                _log.warning(
+                    "GCS cleanup skipped: URI has no object path component."
+                )
+                return
+
+            uri_bucket = without_scheme[:slash_pos]
+            object_name = without_scheme[slash_pos + 1:]
+
+            if not self._bucket_name:
+                _log.warning(
+                    "GCS cleanup skipped: bucket not configured "
+                    "(object path: %r).",
+                    object_name,
+                )
+                return
+
+            if uri_bucket != self._bucket_name:
+                _log.warning(
+                    "GCS cleanup skipped: URI bucket does not match configured "
+                    "bucket (object path: %r).",
+                    object_name,
+                )
+                return
+
+            bucket = self._get_bucket()
+            blob = bucket.blob(object_name)
+            try:
+                blob.delete()
+            except Exception as exc:
+                # Import lazily — same pattern as _get_client().
+                try:
+                    from google.cloud.exceptions import NotFound
+
+                    if isinstance(exc, NotFound):
+                        # Object already gone — idempotent, not an error.
+                        return
+                except ImportError:
+                    pass
+                # Any other GCS error: log type + object path only.
+                # Never log exception messages — they may contain tokens.
+                _log.warning(
+                    "GCS cleanup warning: could not delete object %r "
+                    "(exception type: %s). "
+                    "The temporary object may require manual removal.",
+                    object_name,
+                    type(exc).__name__,
+                )
+
+        except Exception as exc:  # pragma: no cover — last-resort safety net
+            # An unexpected error in our own logic (e.g. attribute error).
+            # Log type only — never the message.
+            _log.warning(
+                "GCS cleanup encountered an unexpected error "
+                "(exception type: %s, object path: %r). "
+                "Primary operation is unaffected.",
+                type(exc).__name__,
+                object_name,
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -6,13 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.ingestion import router as ingestion_router
 from app.api.tickets import router as tickets_router
+from app.core.config import settings
 from app.database import init_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialise SQLite tables before the first request arrives."""
-    init_db()
+    """Validate storage and initialise SQLite only for local development."""
+    settings.validate_ticket_storage()
+    if not settings.is_firestore:
+        init_db()
     yield
 
 
@@ -25,7 +28,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

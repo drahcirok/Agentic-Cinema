@@ -13,14 +13,24 @@ type Ticket = {
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
-const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-const MAX_SIZE_MB = 10;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const ALLOWED_VIDEO_TYPES = ["video/mp4"];
+const MAX_IMAGE_MB = 10;
+const MAX_VIDEO_MB = 50;
 
 export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ticket) => void }) {
   const [shotId, setShotId] = useState("");
   const [directorNote, setDirectorNote] = useState("");
+
+  // Frame (image) state
   const [frame, setFrame] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const frameInputRef = useRef<HTMLInputElement>(null);
+
+  // Video state
+  const [video, setVideo] = useState<File | null>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+
   const [submitting, setSubmitting] = useState(false);
   // variant drives the status message colour as a static class name so
   // Tailwind v4's scanner can detect all three strings unambiguously.
@@ -28,20 +38,26 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
   //   "info"    → amber       (no post-production needed)
   //   "error"   → rose        (network or API error)
   const [message, setMessage] = useState<{ text: string; variant: "ok" | "info" | "error" } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ------------------------------------------------------------------
+  // Frame handlers
+  // ------------------------------------------------------------------
 
   function handleFrameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     if (!file) return;
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       setMessage({ text: `Tipo no permitido: ${file.type}. Usa .jpg, .png o .webp.`, variant: "error" });
       return;
     }
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setMessage({ text: `El fotograma supera los ${MAX_SIZE_MB} MiB.`, variant: "error" });
+    if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+      setMessage({ text: `El fotograma supera los ${MAX_IMAGE_MB} MiB.`, variant: "error" });
       return;
     }
+
+    // Clear video when the user picks a frame.
+    removeVideo();
 
     // Revoke the previous object URL before creating a new one to avoid
     // leaking blob memory when the user replaces the image without clicking "Quitar".
@@ -57,8 +73,41 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
     setFrame(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (frameInputRef.current) frameInputRef.current.value = "";
   }
+
+  // ------------------------------------------------------------------
+  // Video handlers
+  // ------------------------------------------------------------------
+
+  function handleVideoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+
+    if (!ALLOWED_VIDEO_TYPES.includes(file.type)) {
+      setMessage({ text: `Tipo no permitido: ${file.type}. Usa .mp4.`, variant: "error" });
+      return;
+    }
+    if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+      setMessage({ text: `El video supera los ${MAX_VIDEO_MB} MiB.`, variant: "error" });
+      return;
+    }
+
+    // Clear frame when the user picks a video.
+    removeFrame();
+
+    setMessage(null);
+    setVideo(file);
+  }
+
+  function removeVideo() {
+    setVideo(null);
+    if (videoInputRef.current) videoInputRef.current.value = "";
+  }
+
+  // ------------------------------------------------------------------
+  // Submit
+  // ------------------------------------------------------------------
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,6 +119,7 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
       body.append("shot_id", shotId);
       body.append("director_note", directorNote);
       if (frame) body.append("frame", frame);
+      if (video) body.append("video", video);
 
       const response = await fetch(`${apiBaseUrl}/ingestion/director-notes`, {
         method: "POST",
@@ -88,9 +138,15 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
         setShotId("");
         setDirectorNote("");
         removeFrame();
+        removeVideo();
+        const mediaLabel = video
+          ? "el video"
+          : frame
+          ? "el fotograma"
+          : null;
         setMessage({
-          text: frame
-            ? "Gemini analizó la nota y el fotograma. Ticket pendiente de revisión."
+          text: mediaLabel
+            ? `Gemini analizó la nota y ${mediaLabel}. Ticket pendiente de revisión.`
             : "Gemini creó un ticket pendiente de revisión.",
           variant: "ok",
         });
@@ -100,6 +156,7 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
         setShotId("");
         setDirectorNote("");
         removeFrame();
+        removeVideo();
         setMessage({
           text: `No se creó ticket: esta nota no requiere postproducción.${reason ? ` ${reason}` : ""}`,
           variant: "info",
@@ -147,22 +204,33 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
         </button>
       </div>
 
-      {/* Image picker row */}
-      <div className="mt-3 flex flex-wrap items-start gap-4">
+      {/* Media pickers row — frame and video are mutually exclusive */}
+      <div className="mt-3 flex flex-wrap items-start gap-6">
+
+        {/* ---- Frame picker ---- */}
         <div className="flex flex-col gap-1">
           <span className="text-xs font-semibold text-slate-400">
             FOTOGRAMA{" "}
-            <span className="font-normal text-slate-500">(opcional — .jpg, .png, .webp · máx. {MAX_SIZE_MB} MiB)</span>
+            <span className="font-normal text-slate-500">
+              (opcional · .jpg .png .webp · máx. {MAX_IMAGE_MB} MiB)
+            </span>
           </span>
           <div className="flex items-center gap-2">
-            <label className="cursor-pointer rounded-lg border border-dashed border-slate-600 bg-[#162337] px-3 py-1.5 text-xs text-slate-300 hover:border-cyan-400 hover:text-cyan-300">
+            <label
+              className={
+                video
+                  ? "cursor-not-allowed rounded-lg border border-dashed border-slate-700 bg-[#162337] px-3 py-1.5 text-xs text-slate-600"
+                  : "cursor-pointer rounded-lg border border-dashed border-slate-600 bg-[#162337] px-3 py-1.5 text-xs text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
+              }
+            >
               {frame ? "Cambiar imagen" : "Seleccionar imagen"}
               <input
-                ref={fileInputRef}
+                ref={frameInputRef}
                 type="file"
                 accept=".jpg,.jpeg,.png,.webp"
                 className="sr-only"
                 onChange={handleFrameChange}
+                disabled={!!video}
               />
             </label>
             {frame && (
@@ -182,9 +250,52 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
           )}
         </div>
 
-        {/* Thumbnail preview */}
+        {/* ---- Video picker ---- */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-slate-400">
+            VIDEO{" "}
+            <span className="font-normal text-slate-500">
+              (opcional · .mp4 · máx. {MAX_VIDEO_MB} MiB)
+            </span>
+          </span>
+          <div className="flex items-center gap-2">
+            <label
+              className={
+                frame
+                  ? "cursor-not-allowed rounded-lg border border-dashed border-slate-700 bg-[#162337] px-3 py-1.5 text-xs text-slate-600"
+                  : "cursor-pointer rounded-lg border border-dashed border-slate-600 bg-[#162337] px-3 py-1.5 text-xs text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
+              }
+            >
+              {video ? "Cambiar video" : "Seleccionar video"}
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept=".mp4,video/mp4"
+                className="sr-only"
+                onChange={handleVideoChange}
+                disabled={!!frame}
+              />
+            </label>
+            {video && (
+              <button
+                type="button"
+                onClick={removeVideo}
+                className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-300 hover:bg-rose-500/20"
+              >
+                Quitar
+              </button>
+            )}
+          </div>
+          {video && (
+            <p className="mt-1 text-xs text-slate-500">
+              {video.name} · {(video.size / (1024 * 1024)).toFixed(1)} MB
+            </p>
+          )}
+        </div>
+
+        {/* Thumbnail preview for frames */}
         {previewUrl && (
-          <div className="relative">
+          <div className="relative self-start">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewUrl}
@@ -193,14 +304,19 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
             />
           </div>
         )}
-
-        {/* Quota notice shown only when a frame is attached */}
-        {frame && (
-          <p className="self-end text-xs text-amber-400/80">
-            ⚠ Enviar un fotograma consume cuota adicional de Gemini.
-          </p>
-        )}
       </div>
+
+      {/* Quota warnings */}
+      {frame && (
+        <p className="mt-2 text-xs text-amber-400/80">
+          ⚠ Enviar un fotograma consume cuota adicional de Gemini.
+        </p>
+      )}
+      {video && (
+        <p className="mt-2 text-xs text-amber-400/80">
+          ⚠ Enviar un video sube el archivo a Cloud Storage y consume cuota adicional de Gemini.
+        </p>
+      )}
 
       {/* Status message — three visually distinct variants */}
       {message && (

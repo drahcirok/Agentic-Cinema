@@ -1,22 +1,34 @@
-"""SQLAlchemy-backed repository for post-production tickets.
+"""Persistence repositories for post-production tickets.
 
-Replaces the in-memory TicketStore.  All public methods mirror the
-TicketStore interface so callers require only minimal changes.
+SQLite is used in local development and Firestore in Cloud Run. Both expose
+the same small contract so the API layer stays storage-agnostic.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.ticket import ReviewDecision, Ticket, TicketCreate, TicketReview, TicketStatus
 from app.models.ticket_record import TicketRecord
 
 
 class TicketNotFoundError(Exception):
     """The requested ticket does not exist in the database."""
+
+
+class TicketDataRepository(Protocol):
+    """Common persistence operations exposed to FastAPI endpoints."""
+
+    def create(self, payload: TicketCreate) -> Ticket: ...
+
+    def review(self, ticket_id: UUID, review: TicketReview) -> Ticket: ...
+
+    def list(self) -> list[Ticket]: ...
 
 
 def _record_to_ticket(record: TicketRecord) -> Ticket:
@@ -104,3 +116,102 @@ class TicketRepository:
             .all()
         )
         return [_record_to_ticket(r) for r in records]
+
+
+class FirestoreTicketRepository:
+    """Firestore-backed ticket repository authenticated through ADC."""
+
+    def __init__(self, client: object | None = None, collection_name: str | None = None) -> None:
+        settings.validate_ticket_storage()
+        self._client = client
+        self._collection_name = collection_name or settings.firestore_collection
+
+    def _get_client(self) -> object:
+        if self._client is None:
+            from google.cloud import firestore
+
+            self._client = firestore.Client(project=settings.google_cloud_project)
+        return self._client
+
+    def _get_collection(self) -> object:
+        return self._get_client().collection(self._collection_name)  # type: ignore[union-attr,no-any-return]
+
+    @staticmethod
+    def _document_to_ticket(document_id: str, data: dict[str, object]) -> Ticket:
+        return Ticket(
+            id=UUID(document_id),
+            shot_id=str(data["shot_id"]),
+            director_note=str(data["director_note"]),
+            department=str(data["department"]),
+            priority=str(data["priority"]),
+            status=str(data["status"]),
+            ai_rationale=data.get("ai_rationale"),  # type: ignore[arg-type]
+            supervisor_note=data.get("supervisor_note"),  # type: ignore[arg-type]
+            created_at=data["created_at"],  # type: ignore[arg-type]
+            updated_at=data["updated_at"],  # type: ignore[arg-type]
+        )
+
+    def create(self, payload: TicketCreate) -> Ticket:
+        from uuid import uuid4
+
+        ticket_id = uuid4()
+        now = datetime.now(timezone.utc)
+        data: dict[str, object] = {
+            "shot_id": payload.shot_id,
+            "director_note": payload.director_note,
+            "department": str(payload.department),
+            "priority": str(payload.priority),
+            "status": str(TicketStatus.PENDING_REVIEW),
+            "ai_rationale": payload.ai_rationale,
+            "supervisor_note": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        self._get_collection().document(str(ticket_id)).set(data)  # type: ignore[union-attr]
+        return self._document_to_ticket(str(ticket_id), data)
+
+    def review(self, ticket_id: UUID, review: TicketReview) -> Ticket:
+        reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
+        snapshot = reference.get()
+        if not snapshot.exists:
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+
+        changes: dict[str, object] = {"updated_at": datetime.now(timezone.utc)}
+        if review.department is not None:
+            changes["department"] = str(review.department)
+        if review.priority is not None:
+            changes["priority"] = str(review.priority)
+        if review.supervisor_note is not None:
+            changes["supervisor_note"] = review.supervisor_note
+
+        if review.decision is ReviewDecision.APPROVE:
+            changes["status"] = str(TicketStatus.APPROVED)
+        elif review.decision is ReviewDecision.REJECT:
+            changes["status"] = str(TicketStatus.REJECTED)
+        else:
+            changes["status"] = str(TicketStatus.PENDING_REVIEW)
+
+        reference.update(changes)
+        data = snapshot.to_dict()
+        data.update(changes)
+        return self._document_to_ticket(str(ticket_id), data)
+
+    def list(self) -> list[Ticket]:
+        from google.cloud import firestore
+
+        documents = self._get_collection().order_by(  # type: ignore[union-attr]
+            "created_at", direction=firestore.Query.DESCENDING
+        ).stream()
+        return [
+            self._document_to_ticket(document.id, document.to_dict())
+            for document in documents
+        ]
+
+
+def create_ticket_repository(db: Session | None = None) -> TicketDataRepository:
+    """Return the configured repository without exposing credentials."""
+    if settings.is_firestore:
+        return FirestoreTicketRepository()
+    if db is None:
+        raise RuntimeError("Se requiere una sesión SQLAlchemy para SQLite.")
+    return TicketRepository(db)

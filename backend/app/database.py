@@ -12,6 +12,8 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from app.core.config import settings
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -51,8 +53,12 @@ class Base(DeclarativeBase):
 # ---------------------------------------------------------------------------
 
 
-def get_db() -> Generator[Session, None, None]:
-    """Yield a database session and guarantee it is closed after the request."""
+def get_db() -> Generator[Session | None, None, None]:
+    """Yield SQLite only in local mode; Firestore needs no SQL session."""
+    if settings.is_firestore:
+        yield None
+        return
+
     db = SessionLocal()
     try:
         yield db

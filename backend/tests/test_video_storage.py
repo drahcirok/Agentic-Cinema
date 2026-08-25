@@ -141,7 +141,7 @@ class TestUploadVideo:
         assert uri1 != uri2
 
     def test_raises_when_bucket_not_configured(self):
-        svc = VideoStorageService(bucket_name=None, client=MagicMock())
+        svc = VideoStorageService(bucket_name="", client=MagicMock())
         with pytest.raises(StorageConfigurationError):
             svc.upload_video(b"bytes", "video/mp4")
 
@@ -166,25 +166,41 @@ class TestDeleteObject:
         # Must not raise
         svc.delete_object("gs://my-bucket/uploads/videos/gone.mp4")
 
-    def test_raises_for_non_gs_uri(self):
+    def test_does_not_raise_for_non_gs_uri(self, caplog):
+        """delete_object is best-effort: invalid URIs log a warning, never raise."""
+        import logging
+
         svc, _, _ = _make_service()
-        with pytest.raises(ValueError, match="Invalid GCS URI"):
+        with caplog.at_level(logging.WARNING, logger="app.services.video_storage"):
             svc.delete_object("https://storage.googleapis.com/bucket/object")
+        assert any("gs://" in msg or "uri" in msg.lower() for msg in caplog.messages)
 
-    def test_raises_for_uri_without_object_path(self):
+    def test_does_not_raise_for_uri_without_object_path(self, caplog):
+        """delete_object logs and returns silently when the URI has no object path."""
+        import logging
+
         svc, _, _ = _make_service()
-        with pytest.raises(ValueError, match="no object path"):
+        with caplog.at_level(logging.WARNING, logger="app.services.video_storage"):
             svc.delete_object("gs://bucket-only")
+        assert any("path" in msg.lower() or "object" in msg.lower() for msg in caplog.messages)
 
-    def test_raises_for_wrong_bucket(self):
+    def test_does_not_raise_for_wrong_bucket(self, caplog):
+        """delete_object logs and returns silently on bucket mismatch, never raises."""
+        import logging
+
         svc, _, _ = _make_service(bucket_name="correct-bucket")
-        with pytest.raises(ValueError, match="does not match configured bucket"):
+        with caplog.at_level(logging.WARNING, logger="app.services.video_storage"):
             svc.delete_object("gs://other-bucket/uploads/videos/file.mp4")
+        assert any("bucket" in msg.lower() for msg in caplog.messages)
 
-    def test_raises_when_bucket_not_configured(self):
-        svc = VideoStorageService(bucket_name=None, client=MagicMock())
-        with pytest.raises(StorageConfigurationError):
+    def test_does_not_raise_when_bucket_not_configured(self, caplog):
+        """delete_object logs and returns silently when bucket is not configured."""
+        import logging
+
+        svc = VideoStorageService(bucket_name="", client=MagicMock())
+        with caplog.at_level(logging.WARNING, logger="app.services.video_storage"):
             svc.delete_object("gs://anything/path/file.mp4")
+        assert any("bucket" in msg.lower() or "configured" in msg.lower() for msg in caplog.messages)
 
 
 # ---------------------------------------------------------------------------
@@ -195,19 +211,47 @@ class TestDeleteObject:
 class TestStorageConfiguration:
     def test_lazy_client_creation_uses_adc(self):
         """When no client is injected, the service creates one via gcs.Client()
-        which picks up ADC automatically.  We mock google.cloud.storage.Client
-        at import time to avoid real I/O."""
+        which picks up ADC automatically.
+
+        google-cloud-storage may not be installed in this environment so we
+        inject a fake module into sys.modules to intercept the lazy import
+        inside _get_client() without requiring the real SDK.
+        """
+        import sys
+        import types
+
         mock_blob = MagicMock()
         mock_bucket = MagicMock()
         mock_bucket.blob.return_value = mock_blob
         mock_gcs_client = MagicMock()
         mock_gcs_client.bucket.return_value = mock_bucket
 
-        svc = VideoStorageService(bucket_name="test-bucket", client=None)
+        # Build a minimal fake google.cloud.storage module.
+        fake_storage = types.ModuleType("google.cloud.storage")
+        fake_storage.Client = MagicMock(return_value=mock_gcs_client)
 
-        # Patch the Client class that _get_client() imports lazily.
-        with patch("google.cloud.storage.Client", return_value=mock_gcs_client):
+        # Inject it so the lazy `from google.cloud import storage as gcs` resolves.
+        prev_cloud = sys.modules.get("google.cloud")
+        prev_storage = sys.modules.get("google.cloud.storage")
+
+        fake_cloud = types.ModuleType("google.cloud")
+        fake_cloud.storage = fake_storage
+        sys.modules.setdefault("google.cloud", fake_cloud)
+        sys.modules["google.cloud.storage"] = fake_storage
+
+        try:
+            svc = VideoStorageService(bucket_name="test-bucket", client=None)
             uri = svc.upload_video(b"bytes", "video/mp4")
+        finally:
+            # Restore original sys.modules state.
+            if prev_storage is None:
+                sys.modules.pop("google.cloud.storage", None)
+            else:
+                sys.modules["google.cloud.storage"] = prev_storage
+            if prev_cloud is None:
+                sys.modules.pop("google.cloud", None)
+            else:
+                sys.modules["google.cloud"] = prev_cloud
 
         assert uri.startswith("gs://test-bucket/")
         mock_gcs_client.bucket.assert_called_once_with("test-bucket")
