@@ -22,7 +22,12 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
   const [frame, setFrame] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  // variant drives the status message colour as a static class name so
+  // Tailwind v4's scanner can detect all three strings unambiguously.
+  //   "ok"      → cyan/slate  (ticket created)
+  //   "info"    → amber       (no post-production needed)
+  //   "error"   → rose        (network or API error)
+  const [message, setMessage] = useState<{ text: string; variant: "ok" | "info" | "error" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFrameChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -30,11 +35,11 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
     if (!file) return;
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      setMessage({ text: `Tipo no permitido: ${file.type}. Usa .jpg, .png o .webp.`, ok: false });
+      setMessage({ text: `Tipo no permitido: ${file.type}. Usa .jpg, .png o .webp.`, variant: "error" });
       return;
     }
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setMessage({ text: `El fotograma supera los ${MAX_SIZE_MB} MiB.`, ok: false });
+      setMessage({ text: `El fotograma supera los ${MAX_SIZE_MB} MiB.`, variant: "error" });
       return;
     }
 
@@ -87,7 +92,7 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
           text: frame
             ? "Gemini analizó la nota y el fotograma. Ticket pendiente de revisión."
             : "Gemini creó un ticket pendiente de revisión.",
-          ok: true,
+          variant: "ok",
         });
       } else {
         // HTTP 200: requires_postproduction=false — no ticket created.
@@ -97,13 +102,13 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
         removeFrame();
         setMessage({
           text: `No se creó ticket: esta nota no requiere postproducción.${reason ? ` ${reason}` : ""}`,
-          ok: false,
+          variant: "info",
         });
       }
     } catch (error) {
       setMessage({
         text: error instanceof Error ? error.message : "No se pudo procesar la nota.",
-        ok: false,
+        variant: "error",
       });
     } finally {
       setSubmitting(false);
@@ -197,16 +202,18 @@ export default function DirectorNoteForm({ onCreated }: { onCreated: (ticket: Ti
         )}
       </div>
 
-      {/* Status message — amber for informational non-errors (no ticket needed) */}
+      {/* Status message — three visually distinct variants */}
       {message && (
         <p
-          className={`mt-3 text-xs ${
-            message.ok
-              ? "text-slate-300"
-              : message.text.startsWith("No se creó ticket:")
-              ? "text-amber-300"
-              : "text-rose-300"
-          }`}
+          data-testid="ingestion-message"
+          data-variant={message.variant}
+          className={
+            message.variant === "ok"
+              ? "mt-3 text-xs text-cyan-300"
+              : message.variant === "info"
+              ? "mt-3 text-xs text-amber-300"
+              : "mt-3 text-xs text-rose-300"
+          }
         >
           {message.text}
         </p>
