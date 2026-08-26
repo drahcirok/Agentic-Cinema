@@ -144,7 +144,7 @@ def test_approve_persists_and_list_returns_newest_first(repository: FirestoreTic
     approved = repository.review(UUID(newer_id), TicketReview(decision=ReviewDecision.APPROVE))
     tickets = repository.list()
 
-    assert approved.status.value == "approved"
+    assert approved.status.value == "assigned"
     assert [ticket.id for ticket in tickets] == [UUID(newer_id), UUID(older_id)]
 
 

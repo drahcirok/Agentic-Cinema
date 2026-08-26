@@ -502,6 +502,7 @@ class TestDualContractCompatibility:
         expected_keys = {
             "id", "shot_id", "director_note", "department",
             "priority", "status", "ai_rationale", "supervisor_note",
+            "artist_note", "supervisor_feedback",
             "created_at", "updated_at",
         }
         assert json_resp.status_code == 201

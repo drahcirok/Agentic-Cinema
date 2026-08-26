@@ -140,7 +140,7 @@ class TestTicketPersistenceAcrossSessions:
         tickets = TicketRepository(session_c).list()
         session_c.close()
 
-        assert tickets[0].status == TicketStatus.APPROVED
+        assert tickets[0].status == TicketStatus.ASSIGNED
         assert tickets[0].supervisor_note == "Looks good, approved."
 
     def test_rejection_persists_across_sessions(self, make_session):

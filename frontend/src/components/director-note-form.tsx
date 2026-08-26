@@ -9,7 +9,7 @@ type Ticket = {
   director_note: string;
   department: "vfx" | "color" | "sound" | "editorial";
   priority: "low" | "medium" | "high" | "critical";
-  status: "pending_review" | "approved" | "rejected";
+  status: "pending_review" | "assigned" | "approved" | "in_progress" | "ready_for_qc" | "completed" | "rejected";
 };
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";

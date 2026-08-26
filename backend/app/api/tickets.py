@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.security import CurrentUser, get_current_user
-from app.models.ticket import Ticket, TicketCreate, TicketReview
+from app.models.ticket import Ticket, TicketCreate, TicketQualityReview, TicketReview, TicketWorkUpdate
 from app.services.ticket_repository import (
     TicketDataRepository,
     TicketNotFoundError,
+    TicketTransitionError,
     create_ticket_repository,
 )
 
@@ -50,3 +51,35 @@ async def review_ticket(
         return repo.review(ticket_id, review, user.uid)
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
+
+
+@router.patch("/{ticket_id}/work", response_model=Ticket)
+async def update_artist_work(
+    ticket_id: UUID,
+    update: TicketWorkUpdate,
+    repo: TicketDataRepository = Depends(_repo),
+    user: CurrentUser = Depends(get_current_user),
+) -> Ticket:
+    """Registra el avance del artista: en proceso o listo para QC."""
+    try:
+        return repo.update_work(ticket_id, update, user.uid)
+    except TicketNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
+    except TicketTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.patch("/{ticket_id}/quality-review", response_model=Ticket)
+async def quality_review_ticket(
+    ticket_id: UUID,
+    review: TicketQualityReview,
+    repo: TicketDataRepository = Depends(_repo),
+    user: CurrentUser = Depends(get_current_user),
+) -> Ticket:
+    """El supervisor completa o devuelve una tarea lista para QC."""
+    try:
+        return repo.quality_review(ticket_id, review, user.uid)
+    except TicketNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
+    except TicketTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error

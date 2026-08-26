@@ -13,12 +13,26 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.ticket import ReviewDecision, Ticket, TicketCreate, TicketReview, TicketStatus
+from app.models.ticket import (
+    ArtistWorkStatus,
+    QualityDecision,
+    ReviewDecision,
+    Ticket,
+    TicketCreate,
+    TicketQualityReview,
+    TicketReview,
+    TicketStatus,
+    TicketWorkUpdate,
+)
 from app.models.ticket_record import TicketRecord
 
 
 class TicketNotFoundError(Exception):
     """The requested ticket does not exist in the database."""
+
+
+class TicketTransitionError(Exception):
+    """An actor tried to apply a workflow transition that is not allowed."""
 
 
 class TicketDataRepository(Protocol):
@@ -29,6 +43,10 @@ class TicketDataRepository(Protocol):
     def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor") -> Ticket: ...
 
     def list(self, owner_id: str = "local-supervisor") -> list[Ticket]: ...
+
+    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor") -> Ticket: ...
+
+    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor") -> Ticket: ...
 
 
 def _record_to_ticket(record: TicketRecord) -> Ticket:
@@ -42,6 +60,8 @@ def _record_to_ticket(record: TicketRecord) -> Ticket:
         status=record.status,
         ai_rationale=record.ai_rationale,
         supervisor_note=record.supervisor_note,
+        artist_note=record.artist_note,
+        supervisor_feedback=record.supervisor_feedback,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -72,6 +92,8 @@ class TicketRepository:
             status=str(TicketStatus.PENDING_REVIEW),
             ai_rationale=payload.ai_rationale,
             supervisor_note=None,
+            artist_note=None,
+            supervisor_feedback=None,
             created_at=now,
             updated_at=now,
         )
@@ -94,12 +116,49 @@ class TicketRepository:
             record.supervisor_note = review.supervisor_note
 
         if review.decision is ReviewDecision.APPROVE:
-            record.status = str(TicketStatus.APPROVED)
+            record.status = str(TicketStatus.ASSIGNED)
         elif review.decision is ReviewDecision.REJECT:
             record.status = str(TicketStatus.REJECTED)
         else:
             record.status = str(TicketStatus.PENDING_REVIEW)
 
+        record.updated_at = datetime.now(timezone.utc)
+        self._db.commit()
+        self._db.refresh(record)
+        return _record_to_ticket(record)
+
+    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor") -> Ticket:
+        record: TicketRecord | None = self._db.get(TicketRecord, str(ticket_id))
+        if record is None or record.owner_id != owner_id:
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+
+        current = TicketStatus(record.status)
+        if update.status is ArtistWorkStatus.IN_PROGRESS:
+            if current not in {TicketStatus.ASSIGNED, TicketStatus.APPROVED, TicketStatus.IN_PROGRESS}:
+                raise TicketTransitionError("El ticket no está disponible para iniciar trabajo.")
+        elif current is not TicketStatus.IN_PROGRESS:
+            raise TicketTransitionError("Solo una tarea en proceso puede enviarse a control de calidad.")
+
+        record.status = str(update.status)
+        if update.artist_note is not None:
+            record.artist_note = update.artist_note
+        record.updated_at = datetime.now(timezone.utc)
+        self._db.commit()
+        self._db.refresh(record)
+        return _record_to_ticket(record)
+
+    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor") -> Ticket:
+        record: TicketRecord | None = self._db.get(TicketRecord, str(ticket_id))
+        if record is None or record.owner_id != owner_id:
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+        if TicketStatus(record.status) is not TicketStatus.READY_FOR_QC:
+            raise TicketTransitionError("El ticket debe estar listo para revisión de calidad.")
+
+        record.status = str(
+            TicketStatus.COMPLETED if review.decision is QualityDecision.APPROVE else TicketStatus.IN_PROGRESS
+        )
+        if review.supervisor_feedback is not None:
+            record.supervisor_feedback = review.supervisor_feedback
         record.updated_at = datetime.now(timezone.utc)
         self._db.commit()
         self._db.refresh(record)
@@ -152,6 +211,8 @@ class FirestoreTicketRepository:
             status=str(data["status"]),
             ai_rationale=data.get("ai_rationale"),  # type: ignore[arg-type]
             supervisor_note=data.get("supervisor_note"),  # type: ignore[arg-type]
+            artist_note=data.get("artist_note"),  # type: ignore[arg-type]
+            supervisor_feedback=data.get("supervisor_feedback"),  # type: ignore[arg-type]
             created_at=data["created_at"],  # type: ignore[arg-type]
             updated_at=data["updated_at"],  # type: ignore[arg-type]
         )
@@ -170,6 +231,8 @@ class FirestoreTicketRepository:
             "status": str(TicketStatus.PENDING_REVIEW),
             "ai_rationale": payload.ai_rationale,
             "supervisor_note": None,
+            "artist_note": None,
+            "supervisor_feedback": None,
             "created_at": now,
             "updated_at": now,
         }
@@ -191,7 +254,7 @@ class FirestoreTicketRepository:
             changes["supervisor_note"] = review.supervisor_note
 
         if review.decision is ReviewDecision.APPROVE:
-            changes["status"] = str(TicketStatus.APPROVED)
+            changes["status"] = str(TicketStatus.ASSIGNED)
         elif review.decision is ReviewDecision.REJECT:
             changes["status"] = str(TicketStatus.REJECTED)
         else:
@@ -199,6 +262,46 @@ class FirestoreTicketRepository:
 
         reference.update(changes)
         data = snapshot.to_dict()
+        data.update(changes)
+        return self._document_to_ticket(str(ticket_id), data)
+
+    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor") -> Ticket:
+        reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
+        snapshot = reference.get()
+        if not snapshot.exists or snapshot.to_dict().get("owner_id") != owner_id:
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+
+        data = snapshot.to_dict()
+        current = TicketStatus(str(data["status"]))
+        if update.status is ArtistWorkStatus.IN_PROGRESS:
+            if current not in {TicketStatus.ASSIGNED, TicketStatus.APPROVED, TicketStatus.IN_PROGRESS}:
+                raise TicketTransitionError("El ticket no está disponible para iniciar trabajo.")
+        elif current is not TicketStatus.IN_PROGRESS:
+            raise TicketTransitionError("Solo una tarea en proceso puede enviarse a control de calidad.")
+
+        changes: dict[str, object] = {"status": str(update.status), "updated_at": datetime.now(timezone.utc)}
+        if update.artist_note is not None:
+            changes["artist_note"] = update.artist_note
+        reference.update(changes)
+        data.update(changes)
+        return self._document_to_ticket(str(ticket_id), data)
+
+    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor") -> Ticket:
+        reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
+        snapshot = reference.get()
+        if not snapshot.exists or snapshot.to_dict().get("owner_id") != owner_id:
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+        data = snapshot.to_dict()
+        if TicketStatus(str(data["status"])) is not TicketStatus.READY_FOR_QC:
+            raise TicketTransitionError("El ticket debe estar listo para revisión de calidad.")
+
+        changes: dict[str, object] = {
+            "status": str(TicketStatus.COMPLETED if review.decision is QualityDecision.APPROVE else TicketStatus.IN_PROGRESS),
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if review.supervisor_feedback is not None:
+            changes["supervisor_feedback"] = review.supervisor_feedback
+        reference.update(changes)
         data.update(changes)
         return self._document_to_ticket(str(ticket_id), data)
 

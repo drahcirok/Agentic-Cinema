@@ -27,7 +27,7 @@ import { useAuth } from "@/components/auth-provider";
 
 type Department = "vfx" | "color" | "sound" | "editorial";
 type Priority = "low" | "medium" | "high" | "critical";
-type TicketStatus = "pending_review" | "approved" | "rejected";
+type TicketStatus = "pending_review" | "assigned" | "approved" | "in_progress" | "ready_for_qc" | "completed" | "rejected";
 
 export type Ticket = {
   id: string;
@@ -38,6 +38,8 @@ export type Ticket = {
   status: TicketStatus;
   ai_rationale?: string | null;
   supervisor_note?: string | null;
+  artist_note?: string | null;
+  supervisor_feedback?: string | null;
 };
 
 const DEPT_OPTIONS: { value: Department; label: string }[] = [

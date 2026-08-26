@@ -21,6 +21,12 @@ class Priority(StrEnum):
 
 class TicketStatus(StrEnum):
     PENDING_REVIEW = "pending_review"
+    ASSIGNED = "assigned"
+    IN_PROGRESS = "in_progress"
+    READY_FOR_QC = "ready_for_qc"
+    COMPLETED = "completed"
+    # Kept only to render tickets created before Workflow v1. New approvals
+    # transition to ASSIGNED.
     APPROVED = "approved"
     REJECTED = "rejected"
 
@@ -29,6 +35,16 @@ class ReviewDecision(StrEnum):
     APPROVE = "approve"
     EDIT = "edit"
     REJECT = "reject"
+
+
+class ArtistWorkStatus(StrEnum):
+    IN_PROGRESS = "in_progress"
+    READY_FOR_QC = "ready_for_qc"
+
+
+class QualityDecision(StrEnum):
+    APPROVE = "approve"
+    RETURN_FOR_REWORK = "return_for_rework"
 
 
 class TicketCreate(BaseModel):
@@ -46,6 +62,16 @@ class TicketReview(BaseModel):
     supervisor_note: str | None = Field(default=None, max_length=1000)
 
 
+class TicketWorkUpdate(BaseModel):
+    status: ArtistWorkStatus
+    artist_note: str | None = Field(default=None, max_length=1000)
+
+
+class TicketQualityReview(BaseModel):
+    decision: QualityDecision
+    supervisor_feedback: str | None = Field(default=None, max_length=1000)
+
+
 class Ticket(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     shot_id: str
@@ -55,5 +81,7 @@ class Ticket(BaseModel):
     status: TicketStatus = TicketStatus.PENDING_REVIEW
     ai_rationale: str | None = None
     supervisor_note: str | None = None
+    artist_note: str | None = None
+    supervisor_feedback: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

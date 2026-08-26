@@ -59,6 +59,8 @@ class TicketRecord(Base):
 
     ai_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     supervisor_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    artist_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    supervisor_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

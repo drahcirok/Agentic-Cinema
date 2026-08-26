@@ -93,8 +93,12 @@ def init_db() -> None:
     # Esta migración pequeña mantiene los datos locales existentes al incorporar
     # owner_id para el aislamiento por supervisor.
     columns = {column["name"] for column in inspect(engine).get_columns("postproduction_tickets")}
-    if "owner_id" not in columns:
-        with engine.begin() as connection:
+    with engine.begin() as connection:
+        if "owner_id" not in columns:
             connection.execute(
                 text("ALTER TABLE postproduction_tickets ADD COLUMN owner_id VARCHAR(128)")
             )
+        if "artist_note" not in columns:
+            connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN artist_note TEXT"))
+        if "supervisor_feedback" not in columns:
+            connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN supervisor_feedback TEXT"))
