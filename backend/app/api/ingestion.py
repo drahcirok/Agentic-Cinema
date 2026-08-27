@@ -54,6 +54,7 @@ from app.models.ticket import Ticket, TicketCreate
 from app.services.gemini_classifier import GeminiConfigurationError, gemini_classifier
 from app.services.ticket_repository import TicketDataRepository, create_ticket_repository
 from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, create_production_repository
+from app.models.production import ProductionRole
 from app.services.video_storage import StorageConfigurationError, video_storage
 
 _log = logging.getLogger(__name__)
@@ -321,7 +322,10 @@ async def ingest_director_note(
 
     if x_production_id is not None:
         try:
-            productions.list_members(x_production_id, user.uid)
+            members = productions.list_members(x_production_id, user.uid)
+            role = next(member.role for member in members if member.uid == user.uid)
+            if role not in {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR}:
+                raise HTTPException(status_code=403, detail="Tu rol no puede crear tickets.")
         except ProductionNotFoundError as exc:
             raise HTTPException(status_code=404, detail="Producción no encontrada o sin acceso.") from exc
     ticket = repo.create(result, user.uid, x_production_id)

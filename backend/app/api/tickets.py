@@ -36,6 +36,20 @@ def _require_production_access(production_id: UUID | None, user: CurrentUser, pr
         raise HTTPException(status_code=404, detail="Producción no encontrada o sin acceso.") from exc
 
 
+def _role_for(production_id: UUID | None, user: CurrentUser, productions: ProductionDataRepository) -> ProductionRole | None:
+    if production_id is None:
+        return None
+    _require_production_access(production_id, user, productions)
+    member = next(member for member in productions.list_members(production_id, user.uid) if member.uid == user.uid)
+    return member.role
+
+
+def _require_role(production_id: UUID | None, user: CurrentUser, productions: ProductionDataRepository, allowed: set[ProductionRole]) -> None:
+    role = _role_for(production_id, user, productions)
+    if role is not None and role not in allowed:
+        raise HTTPException(status_code=403, detail="Tu rol no puede realizar esta acción.")
+
+
 def _validate_artist_assignment(review: TicketReview, production_id: UUID | None, user: CurrentUser, productions: ProductionDataRepository) -> None:
     if review.decision is not ReviewDecision.APPROVE or production_id is None:
         return
@@ -57,6 +71,7 @@ async def create_ticket(
 ) -> Ticket:
     """Crea un ticket que queda pendiente de aprobación humana."""
     _require_production_access(x_production_id, user, productions)
+    _require_role(x_production_id, user, productions, {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR})
     return repo.create(payload, user.uid, x_production_id)
 
 
@@ -68,8 +83,9 @@ async def list_tickets(
     x_production_id: UUID | None = Header(default=None),
 ) -> list[Ticket]:
     """Devuelve los tickets para las columnas del tablero Kanban."""
-    _require_production_access(x_production_id, user, productions)
-    return repo.list(user.uid, x_production_id)
+    role = _role_for(x_production_id, user, productions)
+    tickets = repo.list(user.uid, x_production_id)
+    return [ticket for ticket in tickets if role is not ProductionRole.ARTIST or ticket.assigned_to_uid == user.uid]
 
 
 @router.patch("/{ticket_id}/review", response_model=Ticket)
@@ -84,6 +100,7 @@ async def review_ticket(
     """Registra la aprobación, edición o rechazo del supervisor."""
     try:
         _require_production_access(x_production_id, user, productions)
+        _require_role(x_production_id, user, productions, {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR})
         _validate_artist_assignment(review, x_production_id, user, productions)
         return repo.review(ticket_id, review, user.uid, x_production_id)
     except TicketNotFoundError as error:
@@ -102,6 +119,10 @@ async def update_artist_work(
     """Registra el avance del artista: en proceso o listo para QC."""
     try:
         _require_production_access(x_production_id, user, productions)
+        _require_role(x_production_id, user, productions, {ProductionRole.ARTIST})
+        visible = repo.list(user.uid, x_production_id)
+        if not any(ticket.id == ticket_id and ticket.assigned_to_uid == user.uid for ticket in visible):
+            raise HTTPException(status_code=403, detail="Esta tarea no está asignada a tu usuario.")
         return repo.update_work(ticket_id, update, user.uid, x_production_id)
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
@@ -121,6 +142,7 @@ async def quality_review_ticket(
     """El supervisor completa o devuelve una tarea lista para QC."""
     try:
         _require_production_access(x_production_id, user, productions)
+        _require_role(x_production_id, user, productions, {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR})
         return repo.quality_review(ticket_id, review, user.uid, x_production_id)
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
