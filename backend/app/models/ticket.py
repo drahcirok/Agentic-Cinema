@@ -60,6 +60,8 @@ class TicketReview(BaseModel):
     department: Department | None = None
     priority: Priority | None = None
     supervisor_note: str | None = Field(default=None, max_length=1000)
+    assigned_to_uid: str | None = Field(default=None, min_length=1, max_length=128)
+    assigned_to_name: str | None = Field(default=None, max_length=120)
 
 
 class TicketWorkUpdate(BaseModel):
@@ -86,5 +88,7 @@ class Ticket(BaseModel):
     # The production becomes the collaboration/security boundary. ``None`` is
     # retained only to render historical tickets created before team support.
     production_id: UUID | None = None
+    assigned_to_uid: str | None = None
+    assigned_to_name: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

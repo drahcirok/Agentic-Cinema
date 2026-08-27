@@ -504,6 +504,7 @@ class TestDualContractCompatibility:
             "priority", "status", "ai_rationale", "supervisor_note",
             "artist_note", "supervisor_feedback",
             "production_id",
+            "assigned_to_uid", "assigned_to_name",
             "created_at", "updated_at",
         }
         assert json_resp.status_code == 201

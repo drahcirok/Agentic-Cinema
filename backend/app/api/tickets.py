@@ -13,6 +13,8 @@ from app.services.ticket_repository import (
     create_ticket_repository,
 )
 from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, create_production_repository
+from app.models.production import ProductionRole
+from app.models.ticket import ReviewDecision
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -32,6 +34,17 @@ def _require_production_access(production_id: UUID | None, user: CurrentUser, pr
         productions.list_members(production_id, user.uid)
     except ProductionNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Producción no encontrada o sin acceso.") from exc
+
+
+def _validate_artist_assignment(review: TicketReview, production_id: UUID | None, user: CurrentUser, productions: ProductionDataRepository) -> None:
+    if review.decision is not ReviewDecision.APPROVE or production_id is None:
+        return
+    if not review.assigned_to_uid:
+        raise HTTPException(status_code=422, detail="Selecciona un artista antes de asignar el ticket.")
+    members = productions.list_members(production_id, user.uid)
+    artist = next((member for member in members if member.uid == review.assigned_to_uid), None)
+    if artist is None or artist.role is not ProductionRole.ARTIST:
+        raise HTTPException(status_code=422, detail="El usuario seleccionado no es un artista de esta producción.")
 
 
 @router.post("", response_model=Ticket, status_code=status.HTTP_201_CREATED)
@@ -71,6 +84,7 @@ async def review_ticket(
     """Registra la aprobación, edición o rechazo del supervisor."""
     try:
         _require_production_access(x_production_id, user, productions)
+        _validate_artist_assignment(review, x_production_id, user, productions)
         return repo.review(ticket_id, review, user.uid, x_production_id)
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error

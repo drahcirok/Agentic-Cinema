@@ -64,6 +64,8 @@ def _record_to_ticket(record: TicketRecord) -> Ticket:
         artist_note=record.artist_note,
         supervisor_feedback=record.supervisor_feedback,
         production_id=UUID(record.production_id) if record.production_id else None,
+        assigned_to_uid=record.assigned_to_uid,
+        assigned_to_name=record.assigned_to_name,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -88,6 +90,8 @@ class TicketRepository:
             id=str(uuid4()),
             owner_id=owner_id,
             production_id=str(production_id) if production_id else None,
+            assigned_to_uid=None,
+            assigned_to_name=None,
             shot_id=payload.shot_id,
             director_note=payload.director_note,
             department=str(payload.department),
@@ -117,6 +121,9 @@ class TicketRepository:
             record.priority = str(review.priority)
         if review.supervisor_note is not None:
             record.supervisor_note = review.supervisor_note
+        if review.assigned_to_uid is not None:
+            record.assigned_to_uid = review.assigned_to_uid
+            record.assigned_to_name = review.assigned_to_name
 
         if review.decision is ReviewDecision.APPROVE:
             record.status = str(TicketStatus.ASSIGNED)
@@ -222,6 +229,9 @@ class FirestoreTicketRepository:
             supervisor_note=data.get("supervisor_note"),  # type: ignore[arg-type]
             artist_note=data.get("artist_note"),  # type: ignore[arg-type]
             supervisor_feedback=data.get("supervisor_feedback"),  # type: ignore[arg-type]
+            production_id=UUID(str(data["production_id"])) if data.get("production_id") else None,
+            assigned_to_uid=data.get("assigned_to_uid"),  # type: ignore[arg-type]
+            assigned_to_name=data.get("assigned_to_name"),  # type: ignore[arg-type]
             created_at=data["created_at"],  # type: ignore[arg-type]
             updated_at=data["updated_at"],  # type: ignore[arg-type]
         )
@@ -234,6 +244,8 @@ class FirestoreTicketRepository:
         data: dict[str, object] = {
             "owner_id": owner_id,
             "production_id": str(production_id) if production_id else None,
+            "assigned_to_uid": None,
+            "assigned_to_name": None,
             "shot_id": payload.shot_id,
             "director_note": payload.director_note,
             "department": str(payload.department),
@@ -262,6 +274,9 @@ class FirestoreTicketRepository:
             changes["priority"] = str(review.priority)
         if review.supervisor_note is not None:
             changes["supervisor_note"] = review.supervisor_note
+        if review.assigned_to_uid is not None:
+            changes["assigned_to_uid"] = review.assigned_to_uid
+            changes["assigned_to_name"] = review.assigned_to_name
 
         if review.decision is ReviewDecision.APPROVE:
             changes["status"] = str(TicketStatus.ASSIGNED)
