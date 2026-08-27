@@ -83,5 +83,8 @@ class Ticket(BaseModel):
     supervisor_note: str | None = None
     artist_note: str | None = None
     supervisor_feedback: str | None = None
+    # The production becomes the collaboration/security boundary. ``None`` is
+    # retained only to render historical tickets created before team support.
+    production_id: UUID | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

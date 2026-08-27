@@ -85,6 +85,7 @@ def init_db() -> None:
 
     # Import models so their Table definitions are registered before create_all.
     import app.models.ticket_record  # noqa: F401
+    import app.models.production_record  # noqa: F401
 
     assert engine is not None
     Base.metadata.create_all(bind=engine)
@@ -98,6 +99,8 @@ def init_db() -> None:
             connection.execute(
                 text("ALTER TABLE postproduction_tickets ADD COLUMN owner_id VARCHAR(128)")
             )
+        if "production_id" not in columns:
+            connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN production_id VARCHAR(36)"))
         if "artist_note" not in columns:
             connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN artist_note TEXT"))
         if "supervisor_feedback" not in columns:

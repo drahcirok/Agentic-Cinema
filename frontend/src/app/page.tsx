@@ -11,6 +11,7 @@ type Priority = "low" | "medium" | "high" | "critical";
 type TicketStatus = "pending_review" | "assigned" | "approved" | "in_progress" | "ready_for_qc" | "completed" | "rejected";
 type View = "decisions" | "production" | "history";
 type WorkflowAction = "send_qc" | "complete" | "return_for_rework";
+type Production = { id: string; name: string; current_user_role?: "producer" | "supervisor" | "artist" | null };
 
 type Ticket = {
   id: string;
@@ -33,9 +34,15 @@ const statusLabel: Record<TicketStatus, string> = {
   ready_for_qc: "Lista para QC", completed: "Completada", rejected: "Rechazada",
 };
 
-async function fetchTickets(headers: Record<string, string>): Promise<Ticket[]> {
-  const response = await fetch(`${apiBaseUrl}/tickets`, { headers });
+async function fetchTickets(headers: Record<string, string>, productionId?: string): Promise<Ticket[]> {
+  const response = await fetch(`${apiBaseUrl}/tickets`, { headers: productionId ? { ...headers, "X-Production-Id": productionId } : headers });
   if (!response.ok) throw new Error("No se pudieron cargar los tickets.");
+  return response.json();
+}
+
+async function bootstrapProduction(headers: Record<string, string>): Promise<Production> {
+  const response = await fetch(`${apiBaseUrl}/productions/bootstrap`, { method: "POST", headers });
+  if (!response.ok) throw new Error("No se pudo preparar tu producción.");
   return response.json();
 }
 
@@ -66,17 +73,23 @@ export default function Home() {
   const [departmentFilter, setDepartmentFilter] = useState<Department>("vfx");
   const [workflowAction, setWorkflowAction] = useState<{ ticket: Ticket; type: WorkflowAction } | null>(null);
   const [workflowNote, setWorkflowNote] = useState("");
+  const [production, setProduction] = useState<Production | null>(null);
 
   const loadTickets = useCallback(async () => {
     setLoading(true); setError(null);
-    try { setTickets(await fetchTickets(await getAuthHeaders())); } catch { setError("No se pudo conectar con el backend. Inténtalo de nuevo."); } finally { setLoading(false); }
-  }, [getAuthHeaders]);
+    try { setTickets(await fetchTickets(await getAuthHeaders(), production?.id)); } catch { setError("No se pudo conectar con el backend. Inténtalo de nuevo."); } finally { setLoading(false); }
+  }, [getAuthHeaders, production]);
 
   useEffect(() => {
     let current = true;
     async function loadInitialTickets() {
       if (!user) return;
-      try { const result = await fetchTickets(await getAuthHeaders()); if (current) setTickets(result); } catch { if (current) setError("No se pudo conectar con el backend. Inténtalo de nuevo."); } finally { if (current) setLoading(false); }
+      try {
+        const headers = await getAuthHeaders();
+        const currentProduction = await bootstrapProduction(headers);
+        const result = await fetchTickets(headers, currentProduction.id);
+        if (current) { setTickets(result); setProduction(currentProduction); }
+      } catch { if (current) setError("No se pudo conectar con el backend. Inténtalo de nuevo."); } finally { if (current) setLoading(false); }
     }
     void loadInitialTickets();
     return () => { current = false; };
@@ -85,7 +98,8 @@ export default function Home() {
   async function updateTicket(ticketId: string, endpoint: string, body: object): Promise<boolean> {
     setProcessingId(ticketId); setError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/tickets/${ticketId}/${endpoint}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) }, body: JSON.stringify(body) });
+      if (!production) throw new Error("No hay una producción activa.");
+      const response = await fetch(`${apiBaseUrl}/tickets/${ticketId}/${endpoint}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...(await getAuthHeaders()), "X-Production-Id": production.id }, body: JSON.stringify(body) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail ?? "No se pudo actualizar el ticket.");
       setTickets((current) => current.map((ticket) => ticket.id === ticketId ? data as Ticket : ticket));
@@ -127,9 +141,9 @@ export default function Home() {
 
   return <main className="min-h-screen bg-[#09111d] px-5 py-8 text-slate-100 sm:px-8 lg:px-12"><section className="mx-auto max-w-7xl">
     <header className="mb-7 flex flex-col justify-between gap-6 border-b border-slate-700/70 pb-7 md:flex-row md:items-end"><div><p className="mb-3 text-xs font-bold tracking-[0.22em] text-cyan-300">FRAMEFLOW / POST-PRODUCTION CONTROL</p><h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">Sala de decisiones</h1><p className="mt-3 max-w-xl text-slate-400">Del análisis con Gemini al control de calidad del equipo de postproducción.</p></div><div className="flex items-end gap-4"><div className="hidden text-right text-xs text-slate-400 sm:block"><p>{user.displayName ?? user.email}</p><button onClick={() => void signOut()} className="mt-1 text-cyan-300 hover:underline">Cerrar sesión</button></div><div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-5 py-3"><p className="text-xs font-medium uppercase tracking-wider text-cyan-200">Por revisar</p><p className="mt-1 text-3xl font-semibold text-white">{pending.length}</p></div></div></header>
-    <nav className="mb-7 flex flex-wrap gap-2" aria-label="Vistas de FrameFlow">{([ ["decisions", "Sala de decisiones"], ["production", "Área de producción"], ["history", "Historial"] ] as const).map(([key, label]) => <button key={key} onClick={() => setView(key)} className={view === key ? "rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950" : "rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400"}>{label}</button>)}</nav>
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><nav className="flex flex-wrap gap-2" aria-label="Vistas de FrameFlow">{([ ["decisions", "Sala de decisiones"], ["production", "Área de producción"], ["history", "Historial"] ] as const).map(([key, label]) => <button key={key} onClick={() => setView(key)} className={view === key ? "rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950" : "rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400"}>{label}</button>)}</nav>{production && <p className="rounded-lg border border-slate-700 bg-[#101b2b] px-3 py-2 text-xs text-slate-400"><span className="text-cyan-300">Producción: </span>{production.name}</p>}</div>
     {error && <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100"><span>{error}</span><button className="underline underline-offset-4" onClick={() => void loadTickets()}>Reintentar</button></div>}
-    {view === "decisions" && <><DirectorNoteForm onCreated={(ticket) => setTickets((current) => [ticket as Ticket, ...current])} /><section className="grid gap-6 lg:grid-cols-2"><TicketColumn title="Por revisar" description="Notas que requieren decisión del supervisor" tickets={pending} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket}><button disabled={processingId === ticket.id} onClick={() => reviewTicket(ticket.id, "reject")} className="action-button reject">Rechazar</button><EditTicketDialog ticket={ticket} onUpdated={(updated) => setTickets((current) => current.map((item) => item.id === updated.id ? updated : item))} /><button disabled={processingId === ticket.id} onClick={() => reviewTicket(ticket.id, "approve")} className="action-button approve">Aprobar y asignar</button></TicketCard>}</TicketColumn><TicketColumn title="Control de calidad" description="Trabajo enviado por artistas para revisión final" tickets={qualityQueue} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket}><button disabled={processingId === ticket.id} onClick={() => openWorkflowAction(ticket, "return_for_rework")} className="action-button reject">Devolver</button><button disabled={processingId === ticket.id} onClick={() => openWorkflowAction(ticket, "complete")} className="action-button approve">Completar</button></TicketCard>}</TicketColumn></section></>}
+    {view === "decisions" && production && <><DirectorNoteForm productionId={production.id} onCreated={(ticket) => setTickets((current) => [ticket as Ticket, ...current])} /><section className="grid gap-6 lg:grid-cols-2"><TicketColumn title="Por revisar" description="Notas que requieren decisión del supervisor" tickets={pending} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket}><button disabled={processingId === ticket.id} onClick={() => reviewTicket(ticket.id, "reject")} className="action-button reject">Rechazar</button><EditTicketDialog productionId={production.id} ticket={ticket} onUpdated={(updated) => setTickets((current) => current.map((item) => item.id === updated.id ? updated : item))} /><button disabled={processingId === ticket.id} onClick={() => reviewTicket(ticket.id, "approve")} className="action-button approve">Aprobar y asignar</button></TicketCard>}</TicketColumn><TicketColumn title="Control de calidad" description="Trabajo enviado por artistas para revisión final" tickets={qualityQueue} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket}><button disabled={processingId === ticket.id} onClick={() => openWorkflowAction(ticket, "return_for_rework")} className="action-button reject">Devolver</button><button disabled={processingId === ticket.id} onClick={() => openWorkflowAction(ticket, "complete")} className="action-button approve">Completar</button></TicketCard>}</TicketColumn></section></>}
     {view === "production" && <><div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/70 bg-[#101b2b] p-4"><div><h2 className="font-semibold text-white">Área de producción</h2><p className="mt-1 text-xs text-slate-500">Vista temporal por departamento para demostrar el flujo de artista.</p></div><select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value as Department)} className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-slate-100"><option value="vfx">VFX</option><option value="sound">Sonido</option><option value="color">Color</option><option value="editorial">Edición</option></select></div><section className="grid gap-6 lg:grid-cols-3"><TicketColumn title="Asignadas" description={`${departmentLabel[departmentFilter]} · listas para iniciar`} tickets={assigned} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket}><button disabled={processingId === ticket.id} onClick={() => startWork(ticket)} className="action-button approve">Iniciar trabajo</button></TicketCard>}</TicketColumn><TicketColumn title="En proceso" description="El artista trabaja y luego envía a QC" tickets={inProgress} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket}><button disabled={processingId === ticket.id} onClick={() => openWorkflowAction(ticket, "send_qc")} className="action-button approve">Enviar a QC</button></TicketCard>}</TicketColumn><TicketColumn title="Listas para QC" description="Esperando revisión del supervisor" tickets={qualityQueue.filter((ticket) => ticket.department === departmentFilter)} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket} />}</TicketColumn></section></>}
     {view === "history" && <section className="grid gap-6 lg:grid-cols-2"><TicketColumn title="Completadas" description="Entregables aprobados por control de calidad" tickets={completed} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket} />}</TicketColumn><TicketColumn title="Rechazadas" description="Notas que no avanzaron a producción" tickets={rejected} loading={loading}>{(ticket) => <TicketCard key={ticket.id} ticket={ticket} />}</TicketColumn></section>}
     {workflowAction && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/75 p-4"><section role="dialog" aria-modal="true" aria-labelledby="workflow-dialog-title" className="w-full max-w-lg rounded-2xl border border-slate-700 bg-[#101b2b] p-6 shadow-2xl"><p className="text-xs font-bold tracking-[0.2em] text-cyan-300">FRAMEFLOW / WORKFLOW</p><h2 id="workflow-dialog-title" className="mt-2 text-xl font-semibold text-white">{workflowAction.type === "send_qc" ? "Enviar a control de calidad" : workflowAction.type === "complete" ? "Completar tarea" : "Devolver para corrección"}</h2><p className="mt-2 text-sm text-slate-400">{workflowAction.type === "send_qc" ? "Añade contexto para que el supervisor pueda revisar el entregable." : workflowAction.type === "complete" ? "Puedes dejar una observación final antes de archivar el trabajo." : "Describe claramente los cambios que el artista debe realizar."}</p><label className="mt-5 block text-xs font-semibold uppercase tracking-wide text-slate-400">{workflowAction.type === "send_qc" ? "Nota del artista" : "Feedback del supervisor"}<textarea autoFocus value={workflowNote} onChange={(event) => setWorkflowNote(event.target.value)} maxLength={1000} rows={4} placeholder={workflowAction.type === "return_for_rework" ? "Ej. Corregir los bordes del micrófono junto al cabello." : "Comentario opcional…"} className="mt-2 w-full rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300" /></label><div className="mt-6 flex justify-end gap-3"><button onClick={() => setWorkflowAction(null)} disabled={processingId === workflowAction.ticket.id} className="action-button reject">Cancelar</button><button onClick={() => void confirmWorkflowAction()} disabled={processingId === workflowAction.ticket.id} className="action-button approve">{processingId === workflowAction.ticket.id ? "Guardando…" : workflowAction.type === "send_qc" ? "Enviar a QC" : workflowAction.type === "complete" ? "Completar" : "Devolver tarea"}</button></div></section></div>}

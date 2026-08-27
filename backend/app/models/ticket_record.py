@@ -46,6 +46,7 @@ class TicketRecord(Base):
     # migración local no destruya tickets antiguos; esos tickets no se muestran
     # cuando la autenticación está activa.
     owner_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    production_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
     shot_id: Mapped[str] = mapped_column(String(64), nullable=False)
     director_note: Mapped[str] = mapped_column(Text, nullable=False)

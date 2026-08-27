@@ -11,6 +11,7 @@ from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.core.config import settings
 from app.models.ticket import (
@@ -38,15 +39,15 @@ class TicketTransitionError(Exception):
 class TicketDataRepository(Protocol):
     """Common persistence operations exposed to FastAPI endpoints."""
 
-    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor") -> Ticket: ...
+    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
-    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor") -> Ticket: ...
+    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
-    def list(self, owner_id: str = "local-supervisor") -> list[Ticket]: ...
+    def list(self, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> list[Ticket]: ...
 
-    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor") -> Ticket: ...
+    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
-    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor") -> Ticket: ...
+    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
 
 def _record_to_ticket(record: TicketRecord) -> Ticket:
@@ -62,6 +63,7 @@ def _record_to_ticket(record: TicketRecord) -> Ticket:
         supervisor_note=record.supervisor_note,
         artist_note=record.artist_note,
         supervisor_feedback=record.supervisor_feedback,
+        production_id=UUID(record.production_id) if record.production_id else None,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -77,7 +79,7 @@ class TicketRepository:
     # Write
     # ------------------------------------------------------------------
 
-    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor") -> Ticket:
+    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
         """Insert a new ticket and return the Pydantic representation."""
         from uuid import uuid4
 
@@ -85,6 +87,7 @@ class TicketRepository:
         record = TicketRecord(
             id=str(uuid4()),
             owner_id=owner_id,
+            production_id=str(production_id) if production_id else None,
             shot_id=payload.shot_id,
             director_note=payload.director_note,
             department=str(payload.department),
@@ -102,10 +105,10 @@ class TicketRepository:
         self._db.refresh(record)
         return _record_to_ticket(record)
 
-    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor") -> Ticket:
+    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
         """Apply a supervisor review decision and return the updated ticket."""
         record: TicketRecord | None = self._db.get(TicketRecord, str(ticket_id))
-        if record is None or record.owner_id != owner_id:
+        if record is None or not self._can_access(record, owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
 
         if review.department is not None:
@@ -127,9 +130,9 @@ class TicketRepository:
         self._db.refresh(record)
         return _record_to_ticket(record)
 
-    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor") -> Ticket:
+    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
         record: TicketRecord | None = self._db.get(TicketRecord, str(ticket_id))
-        if record is None or record.owner_id != owner_id:
+        if record is None or not self._can_access(record, owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
 
         current = TicketStatus(record.status)
@@ -147,9 +150,9 @@ class TicketRepository:
         self._db.refresh(record)
         return _record_to_ticket(record)
 
-    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor") -> Ticket:
+    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
         record: TicketRecord | None = self._db.get(TicketRecord, str(ticket_id))
-        if record is None or record.owner_id != owner_id:
+        if record is None or not self._can_access(record, owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         if TicketStatus(record.status) is not TicketStatus.READY_FOR_QC:
             raise TicketTransitionError("El ticket debe estar listo para revisión de calidad.")
@@ -168,15 +171,21 @@ class TicketRepository:
     # Read
     # ------------------------------------------------------------------
 
-    def list(self, owner_id: str = "local-supervisor") -> list[Ticket]:
+    def list(self, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> list[Ticket]:
         """Return all tickets ordered by creation date descending."""
-        records = (
-            self._db.query(TicketRecord)
-            .filter(TicketRecord.owner_id == owner_id)
-            .order_by(TicketRecord.created_at.desc())
-            .all()
-        )
+        query = self._db.query(TicketRecord)
+        query = query.filter(or_(TicketRecord.production_id == str(production_id), (TicketRecord.production_id.is_(None) & (TicketRecord.owner_id == owner_id)))) if production_id else query.filter(TicketRecord.owner_id == owner_id)
+        records = query.order_by(TicketRecord.created_at.desc()).all()
         return [_record_to_ticket(r) for r in records]
+
+    @staticmethod
+    def _can_access(record: TicketRecord, owner_id: str, production_id: UUID | None) -> bool:
+        """Permit legacy private tickets only to their original owner."""
+        if production_id:
+            return record.production_id == str(production_id) or (
+                record.production_id is None and record.owner_id == owner_id
+            )
+        return record.production_id is None and record.owner_id == owner_id
 
 
 class FirestoreTicketRepository:
@@ -217,13 +226,14 @@ class FirestoreTicketRepository:
             updated_at=data["updated_at"],  # type: ignore[arg-type]
         )
 
-    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor") -> Ticket:
+    def create(self, payload: TicketCreate, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
         from uuid import uuid4
 
         ticket_id = uuid4()
         now = datetime.now(timezone.utc)
         data: dict[str, object] = {
             "owner_id": owner_id,
+            "production_id": str(production_id) if production_id else None,
             "shot_id": payload.shot_id,
             "director_note": payload.director_note,
             "department": str(payload.department),
@@ -239,10 +249,10 @@ class FirestoreTicketRepository:
         self._get_collection().document(str(ticket_id)).set(data)  # type: ignore[union-attr]
         return self._document_to_ticket(str(ticket_id), data)
 
-    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor") -> Ticket:
+    def review(self, ticket_id: UUID, review: TicketReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
         reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
         snapshot = reference.get()
-        if not snapshot.exists or snapshot.to_dict().get("owner_id") != owner_id:
+        if not snapshot.exists or not self._can_access(snapshot.to_dict(), owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
 
         changes: dict[str, object] = {"updated_at": datetime.now(timezone.utc)}
@@ -265,10 +275,10 @@ class FirestoreTicketRepository:
         data.update(changes)
         return self._document_to_ticket(str(ticket_id), data)
 
-    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor") -> Ticket:
+    def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
         reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
         snapshot = reference.get()
-        if not snapshot.exists or snapshot.to_dict().get("owner_id") != owner_id:
+        if not snapshot.exists or not self._can_access(snapshot.to_dict(), owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
 
         data = snapshot.to_dict()
@@ -286,10 +296,10 @@ class FirestoreTicketRepository:
         data.update(changes)
         return self._document_to_ticket(str(ticket_id), data)
 
-    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor") -> Ticket:
+    def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
         reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
         snapshot = reference.get()
-        if not snapshot.exists or snapshot.to_dict().get("owner_id") != owner_id:
+        if not snapshot.exists or not self._can_access(snapshot.to_dict(), owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         data = snapshot.to_dict()
         if TicketStatus(str(data["status"])) is not TicketStatus.READY_FOR_QC:
@@ -305,15 +315,27 @@ class FirestoreTicketRepository:
         data.update(changes)
         return self._document_to_ticket(str(ticket_id), data)
 
-    def list(self, owner_id: str = "local-supervisor") -> list[Ticket]:
+    def list(self, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> list[Ticket]:
         # Sort in Python to avoid requiring a composite Firestore index for a
         # first deployment. The collection is per-user and small in this demo.
-        documents = self._get_collection().where("owner_id", "==", owner_id).stream()  # type: ignore[union-attr]
+        collection = self._get_collection()
+        if production_id:
+            documents = list(collection.where("production_id", "==", str(production_id)).stream()) + list(collection.where("owner_id", "==", owner_id).stream())  # type: ignore[union-attr]
+        else:
+            documents = collection.where("owner_id", "==", owner_id).stream()  # type: ignore[union-attr]
         tickets = [
             self._document_to_ticket(document.id, document.to_dict())
-            for document in documents
+            for document in {document.id: document for document in documents}.values()
+            if self._can_access(document.to_dict(), owner_id, production_id)
         ]
         return sorted(tickets, key=lambda ticket: ticket.created_at, reverse=True)
+
+    @staticmethod
+    def _can_access(data: dict[str, object], owner_id: str, production_id: UUID | None) -> bool:
+        value = data.get("production_id")
+        if production_id:
+            return value == str(production_id) or (value is None and data.get("owner_id") == owner_id)
+        return value is None and data.get("owner_id") == owner_id
 
 
 def create_ticket_repository(db: Session | None = None) -> TicketDataRepository:

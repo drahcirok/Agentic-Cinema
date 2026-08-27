@@ -34,8 +34,9 @@ Response codes
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -52,6 +53,7 @@ from app.models.ingestion import (
 from app.models.ticket import Ticket, TicketCreate
 from app.services.gemini_classifier import GeminiConfigurationError, gemini_classifier
 from app.services.ticket_repository import TicketDataRepository, create_ticket_repository
+from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, create_production_repository
 from app.services.video_storage import StorageConfigurationError, video_storage
 
 _log = logging.getLogger(__name__)
@@ -64,6 +66,10 @@ _MIME_ALIASES: dict[str, str] = {"image/jpg": "image/jpeg"}
 
 def _repo(db: Session | None = Depends(get_db)) -> TicketDataRepository:
     return create_ticket_repository(db)
+
+
+def _production_repo(db: Session | None = Depends(get_db)) -> ProductionDataRepository:
+    return create_production_repository(db)
 
 
 def _media_type(request: Request) -> str:
@@ -80,7 +86,9 @@ def _media_type(request: Request) -> str:
 async def ingest_director_note(
     request: Request,
     repo: TicketDataRepository = Depends(_repo),
+    productions: ProductionDataRepository = Depends(_production_repo),
     user: CurrentUser = Depends(get_current_user),
+    x_production_id: UUID | None = Header(default=None),
 ) -> JSONResponse:
     """Evalúa si la nota requiere postproducción y, si es así, crea el ticket.
 
@@ -311,7 +319,12 @@ async def ingest_director_note(
             content=result.model_dump(),
         )
 
-    ticket = repo.create(result, user.uid)
+    if x_production_id is not None:
+        try:
+            productions.list_members(x_production_id, user.uid)
+        except ProductionNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Producción no encontrada o sin acceso.") from exc
+    ticket = repo.create(result, user.uid, x_production_id)
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=Ticket.model_validate(ticket).model_dump(mode="json"),

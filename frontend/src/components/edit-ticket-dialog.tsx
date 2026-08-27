@@ -65,6 +65,7 @@ const apiBaseUrl =
 
 interface EditTicketDialogProps {
   ticket: Ticket;
+  productionId: string;
   /** Called with the server-returned updated ticket after a successful PATCH. */
   onUpdated: (updated: Ticket) => void;
 }
@@ -75,6 +76,7 @@ interface EditTicketDialogProps {
 
 export default function EditTicketDialog({
   ticket,
+  productionId,
   onUpdated,
 }: EditTicketDialogProps) {
   const { getAuthHeaders } = useAuth();
@@ -112,7 +114,7 @@ export default function EditTicketDialog({
     try {
       const res = await fetch(`${apiBaseUrl}/tickets/${ticket.id}/review`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()), "X-Production-Id": productionId },
         body: JSON.stringify({
           decision: "edit",
           department,
