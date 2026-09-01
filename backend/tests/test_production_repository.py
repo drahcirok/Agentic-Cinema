@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models.production import ProductionCreate, ProductionMemberCreate, ProductionRole
+from app.models.production import MembershipStatus, ProductionCreate, ProductionMemberCreate, ProductionRole, ProductionUpdate
 from app.models.ticket import Department
 from app.services.production_repository import ProductionPermissionError, ProductionRepository
 from app.services.ticket_repository import TicketRepository
@@ -35,7 +35,7 @@ def test_bootstrap_creates_one_personal_production(repository: ProductionReposit
     assert len(repository.list_for_user("supervisor")) == 1
 
 
-def test_producer_can_add_an_artist_and_artist_can_see_production(repository: ProductionRepository) -> None:
+def test_producer_invites_artist_who_must_accept_before_seeing_production(repository: ProductionRepository) -> None:
     production = repository.create(ProductionCreate(name="Corto Nebula"), "producer")
     artist = repository.add_member(
         production.id,
@@ -45,6 +45,11 @@ def test_producer_can_add_an_artist_and_artist_can_see_production(repository: Pr
 
     assert artist.role is ProductionRole.ARTIST
     assert artist.department is Department.VFX
+    assert artist.membership_status is MembershipStatus.PENDING
+    assert repository.list_for_user("artist") == []
+    invitation = repository.list_invitations("artist")[0]
+    repository.respond_to_invitation(production.id, "artist", MembershipStatus.ACCEPTED)
+    assert invitation.production_id == production.id
     assert repository.list_for_user("artist")[0].id == production.id
 
 
@@ -67,3 +72,10 @@ def test_tickets_can_be_scoped_to_a_production(repository: ProductionRepository)
 
     assert ticket.production_id == production.id
     assert [result.id for result in ticket_repo.list(production_id=production.id)] == [ticket.id]
+
+
+def test_only_producer_can_rename_production(repository: ProductionRepository) -> None:
+    production = repository.create(ProductionCreate(name="Corto Nebula"), "producer")
+    renamed = repository.update(production.id, ProductionUpdate(name="Corto Aurora"), "producer")
+
+    assert renamed.name == "Corto Aurora"

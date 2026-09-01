@@ -109,3 +109,10 @@ def init_db() -> None:
             connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN artist_note TEXT"))
         if "supervisor_feedback" not in columns:
             connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN supervisor_feedback TEXT"))
+
+    member_columns = {column["name"] for column in inspect(engine).get_columns("production_members")}
+    with engine.begin() as connection:
+        if "membership_status" not in member_columns:
+            connection.execute(
+                text("ALTER TABLE production_members ADD COLUMN membership_status VARCHAR(16) NOT NULL DEFAULT 'accepted'")
+            )

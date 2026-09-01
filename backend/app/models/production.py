@@ -17,8 +17,18 @@ class ProductionRole(StrEnum):
     ARTIST = "artist"
 
 
+class MembershipStatus(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+
 class ProductionCreate(BaseModel):
     name: str = Field(min_length=2, max_length=100, examples=["Nebula - Postproducción"])
+
+
+class ProductionUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
 
 
 class ProductionMemberCreate(BaseModel):
@@ -29,9 +39,15 @@ class ProductionMemberCreate(BaseModel):
     email: str | None = Field(default=None, max_length=254)
 
 
+class InvitationResponse(BaseModel):
+    decision: MembershipStatus = Field(description="Solo se aceptan los valores accepted o declined.")
+
+
 class ProductionMember(ProductionMemberCreate):
     production_id: UUID
     created_at: datetime
+    membership_status: MembershipStatus = MembershipStatus.ACCEPTED
+    production_name: str | None = None
 
 
 class Production(BaseModel):

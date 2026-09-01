@@ -35,4 +35,5 @@ class ProductionMemberRecord(Base):
     department: Mapped[str | None] = mapped_column(String(32), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    membership_status: Mapped[str] = mapped_column(String(16), nullable=False, default="accepted")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
