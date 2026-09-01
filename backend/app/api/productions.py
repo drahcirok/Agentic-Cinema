@@ -9,12 +9,18 @@ from app.core.security import CurrentUser, get_current_user
 from app.database import get_db
 from app.models.production import InvitationResponse, MembershipStatus, Production, ProductionCreate, ProductionMember, ProductionMemberCreate, ProductionUpdate
 from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, ProductionPermissionError, create_production_repository
+from app.services.production_repository import ProductionMemberRemovalError
+from app.services.ticket_repository import TicketDataRepository, create_ticket_repository
 
 router = APIRouter(prefix="/productions", tags=["Productions"])
 
 
 def _repo(db: Session | None = Depends(get_db)) -> ProductionDataRepository:
     return create_production_repository(db)
+
+
+def _ticket_repo(db: Session | None = Depends(get_db)) -> TicketDataRepository:
+    return create_ticket_repository(db)
 
 
 @router.post("/bootstrap", response_model=Production)
@@ -73,3 +79,15 @@ async def add_member(production_id: UUID, payload: ProductionMemberCreate, repo:
         raise HTTPException(status_code=404, detail="Producción no encontrada.") from exc
     except ProductionPermissionError as exc:
         raise HTTPException(status_code=403, detail="Solo el productor puede gestionar el equipo.") from exc
+
+
+@router.delete("/{production_id}/members/{member_uid}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(production_id: UUID, member_uid: str, repo: ProductionDataRepository = Depends(_repo), tickets: TicketDataRepository = Depends(_ticket_repo), user: CurrentUser = Depends(get_current_user)) -> None:
+    """Remove a member and return their active tickets to pending supervisor review."""
+    try:
+        repo.remove_member(production_id, member_uid, user.uid)
+        tickets.unassign_member_tasks(production_id, member_uid)
+    except ProductionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Miembro o producción no encontrados.") from exc
+    except (ProductionPermissionError, ProductionMemberRemovalError) as exc:
+        raise HTTPException(status_code=403, detail="No puedes retirar a este miembro.") from exc

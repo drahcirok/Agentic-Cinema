@@ -49,6 +49,8 @@ class TicketDataRepository(Protocol):
 
     def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
+    def unassign_member_tasks(self, production_id: UUID, member_uid: str) -> int: ...
+
 
 def _record_to_ticket(record: TicketRecord) -> Ticket:
     """Convert an ORM row to the Pydantic API model."""
@@ -173,6 +175,24 @@ class TicketRepository:
         self._db.commit()
         self._db.refresh(record)
         return _record_to_ticket(record)
+
+    def unassign_member_tasks(self, production_id: UUID, member_uid: str) -> int:
+        """Return active work to supervisor review after an artist leaves a production."""
+        active_statuses = [str(TicketStatus.ASSIGNED), str(TicketStatus.APPROVED), str(TicketStatus.IN_PROGRESS), str(TicketStatus.READY_FOR_QC)]
+        count = self._db.query(TicketRecord).filter(
+            TicketRecord.production_id == str(production_id),
+            TicketRecord.assigned_to_uid == member_uid,
+            TicketRecord.status.in_(active_statuses),
+        ).update({
+            TicketRecord.status: str(TicketStatus.PENDING_REVIEW),
+            TicketRecord.assigned_to_uid: None,
+            TicketRecord.assigned_to_name: None,
+            TicketRecord.artist_note: None,
+            TicketRecord.supervisor_feedback: None,
+            TicketRecord.updated_at: datetime.now(timezone.utc),
+        }, synchronize_session=False)
+        self._db.commit()
+        return count
 
     # ------------------------------------------------------------------
     # Read
@@ -329,6 +349,24 @@ class FirestoreTicketRepository:
         reference.update(changes)
         data.update(changes)
         return self._document_to_ticket(str(ticket_id), data)
+
+    def unassign_member_tasks(self, production_id: UUID, member_uid: str) -> int:
+        active_statuses = {str(TicketStatus.ASSIGNED), str(TicketStatus.APPROVED), str(TicketStatus.IN_PROGRESS), str(TicketStatus.READY_FOR_QC)}
+        count = 0
+        for document in self._get_collection().where("production_id", "==", str(production_id)).stream():  # type: ignore[union-attr]
+            data = document.to_dict()
+            if data.get("assigned_to_uid") != member_uid or data.get("status") not in active_statuses:
+                continue
+            document.reference.update({
+                "status": str(TicketStatus.PENDING_REVIEW),
+                "assigned_to_uid": None,
+                "assigned_to_name": None,
+                "artist_note": None,
+                "supervisor_feedback": None,
+                "updated_at": datetime.now(timezone.utc),
+            })
+            count += 1
+        return count
 
     def list(self, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> list[Ticket]:
         # Sort in Python to avoid requiring a composite Firestore index for a

@@ -21,6 +21,10 @@ class ProductionPermissionError(Exception):
     pass
 
 
+class ProductionMemberRemovalError(Exception):
+    pass
+
+
 class ProductionDataRepository(Protocol):
     def create(self, payload: ProductionCreate, user_id: str) -> Production: ...
     def list_for_user(self, user_id: str) -> list[Production]: ...
@@ -30,6 +34,7 @@ class ProductionDataRepository(Protocol):
     def list_invitations(self, user_id: str) -> list[ProductionMember]: ...
     def respond_to_invitation(self, production_id: UUID, user_id: str, decision: MembershipStatus) -> ProductionMember: ...
     def update(self, production_id: UUID, payload: ProductionUpdate, user_id: str) -> Production: ...
+    def remove_member(self, production_id: UUID, member_uid: str, user_id: str) -> None: ...
 
 
 def _to_production(record: ProductionRecord, role: str | None = None) -> Production:
@@ -111,6 +116,16 @@ class ProductionRepository:
         record.name, record.updated_at = payload.name.strip(), datetime.now(timezone.utc)
         self._db.commit()
         return _to_production(record, ProductionRole.PRODUCER)
+
+    def remove_member(self, production_id: UUID, member_uid: str, user_id: str) -> None:
+        self._require_role(production_id, user_id, {ProductionRole.PRODUCER})
+        member = self._db.query(ProductionMemberRecord).filter_by(production_id=str(production_id), uid=member_uid).one_or_none()
+        if member is None:
+            raise ProductionNotFoundError()
+        if member.uid == user_id or ProductionRole(member.role) is ProductionRole.PRODUCER:
+            raise ProductionMemberRemovalError()
+        self._db.delete(member)
+        self._db.commit()
 
 
 class FirestoreProductionRepository:
@@ -212,6 +227,18 @@ class FirestoreProductionRepository:
         updated_at = datetime.now(timezone.utc)
         reference.update({"name": payload.name.strip(), "updated_at": updated_at})
         return self._from_data(str(production_id), snapshot.to_dict() | {"name": payload.name.strip(), "updated_at": updated_at}, ProductionRole.PRODUCER)
+
+    def remove_member(self, production_id: UUID, member_uid: str, user_id: str) -> None:
+        caller = self._member(production_id, user_id)
+        if caller.to_dict()["role"] != ProductionRole.PRODUCER:
+            raise ProductionPermissionError()
+        member = self._collection().document(str(production_id)).collection("members").document(member_uid)  # type: ignore[union-attr]
+        snapshot = member.get()
+        if not snapshot.exists:
+            raise ProductionNotFoundError()
+        if member_uid == user_id or snapshot.to_dict()["role"] == ProductionRole.PRODUCER:
+            raise ProductionMemberRemovalError()
+        member.delete()
 
 
 def create_production_repository(db: Session | None = None) -> ProductionDataRepository:

@@ -11,7 +11,7 @@ from app.models.production import MembershipStatus, ProductionCreate, Production
 from app.models.ticket import Department
 from app.services.production_repository import ProductionPermissionError, ProductionRepository
 from app.services.ticket_repository import TicketRepository
-from app.models.ticket import Priority, TicketCreate
+from app.models.ticket import Priority, ReviewDecision, TicketCreate, TicketReview, TicketStatus
 
 
 @pytest.fixture()
@@ -79,3 +79,19 @@ def test_only_producer_can_rename_production(repository: ProductionRepository) -
     renamed = repository.update(production.id, ProductionUpdate(name="Corto Aurora"), "producer")
 
     assert renamed.name == "Corto Aurora"
+
+
+def test_removing_artist_returns_active_ticket_to_pending_review(repository: ProductionRepository) -> None:
+    production = repository.create(ProductionCreate(name="Corto Nebula"), "producer")
+    repository.add_member(production.id, ProductionMemberCreate(uid="artist", role=ProductionRole.ARTIST, department=Department.VFX), "producer")
+    repository.respond_to_invitation(production.id, "artist", MembershipStatus.ACCEPTED)
+    tickets = TicketRepository(repository._db)
+    created = tickets.create(TicketCreate(shot_id="TEAM-002", director_note="Eliminar el boom.", department=Department.VFX, priority=Priority.HIGH), production_id=production.id)
+    tickets.review(created.id, TicketReview(decision=ReviewDecision.APPROVE, assigned_to_uid="artist", assigned_to_name="Kai"), production_id=production.id)
+
+    assert tickets.unassign_member_tasks(production.id, "artist") == 1
+    repository.remove_member(production.id, "artist", "producer")
+
+    assert tickets.list(production_id=production.id)[0].status is TicketStatus.PENDING_REVIEW
+    assert tickets.list(production_id=production.id)[0].assigned_to_uid is None
+    assert all(member.uid != "artist" for member in repository.list_members(production.id, "producer"))
