@@ -66,6 +66,7 @@ type Ticket = {
 
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+const activeProductionStorageKey = "frameflow:active-production";
 const departmentLabel: Record<Department, string> = {
   vfx: "VFX",
   color: "Color",
@@ -375,6 +376,7 @@ export default function Home() {
   const [memberToRemove, setMemberToRemove] = useState<ProductionMember | null>(
     null,
   );
+  const activeProductionId = production?.id;
 
   const loadTickets = useCallback(async () => {
     setLoading(true);
@@ -408,13 +410,33 @@ export default function Home() {
           fetchInvitations(headers),
           fetchNotifications(headers),
         ]);
+        const rememberedId = window.localStorage.getItem(activeProductionStorageKey);
+        const rememberedProduction = availableProductions.find(
+          (item) => item.id === rememberedId,
+        );
+        const [rememberedTickets, rememberedMembers] = rememberedProduction
+          ? await Promise.all([
+              fetchTickets(headers, rememberedProduction.id),
+              fetchMembers(headers, rememberedProduction.id),
+            ])
+          : [[], []];
         if (current) {
-          setTickets([]);
-          setProduction(null);
+          setTickets(rememberedTickets);
+          setProduction(rememberedProduction ?? null);
           setProductions(availableProductions);
           setInvitations(pendingInvitations);
           setNotifications(userNotifications);
-          setMembers([]);
+          setMembers(rememberedMembers);
+          if (rememberedProduction) {
+            const ownMembership = rememberedMembers.find(
+              (member) => member.uid === user.uid,
+            );
+            if (ownMembership?.department)
+              setDepartmentFilter(ownMembership.department);
+            setView(ownMembership?.role === "artist" ? "production" : "decisions");
+          } else {
+            window.localStorage.removeItem(activeProductionStorageKey);
+          }
         }
       } catch {
         if (current)
@@ -434,6 +456,50 @@ export default function Home() {
     const interval = window.setInterval(() => void refreshNotifications(), 30_000);
     return () => window.clearInterval(interval);
   }, [user, refreshNotifications]);
+
+  useEffect(() => {
+    if (!user) return;
+    let current = true;
+    async function refreshWorkspace() {
+      try {
+        const headers = await getAuthHeaders();
+        const [availableProductions, pendingInvitations] = await Promise.all([
+          fetchProductions(headers),
+          fetchInvitations(headers),
+        ]);
+        if (!current) return;
+        setProductions(availableProductions);
+        setInvitations(pendingInvitations);
+        if (!activeProductionId) return;
+        const activeProduction = availableProductions.find(
+          (item) => item.id === activeProductionId,
+        );
+        if (!activeProduction) {
+          window.localStorage.removeItem(activeProductionStorageKey);
+          setProduction(null);
+          setTickets([]);
+          setMembers([]);
+          return;
+        }
+        const [freshTickets, freshMembers] = await Promise.all([
+          fetchTickets(headers, activeProduction.id),
+          fetchMembers(headers, activeProduction.id),
+        ]);
+        if (current) {
+          setProduction(activeProduction);
+          setTickets(freshTickets);
+          setMembers(freshMembers);
+        }
+      } catch {
+        // The next poll retries; current data remains usable during a transient failure.
+      }
+    }
+    const interval = window.setInterval(() => void refreshWorkspace(), 10_000);
+    return () => {
+      current = false;
+      window.clearInterval(interval);
+    };
+  }, [user, getAuthHeaders, activeProductionId]);
 
   async function markNotificationRead(notification: AppNotification) {
     if (notification.read_at) return;
@@ -595,6 +661,7 @@ export default function Home() {
         fetchMembers(headers, selected.id),
       ]);
       setProduction(selected);
+      window.localStorage.setItem(activeProductionStorageKey, selected.id);
       setTickets(result);
       setMembers(team);
       const ownMembership = team.find((member) => member.uid === user.uid);
@@ -1122,7 +1189,10 @@ export default function Home() {
         <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
           <aside className="h-fit rounded-2xl border border-slate-700/70 bg-[#101b2b] p-3">
             <button
-              onClick={() => setProduction(null)}
+              onClick={() => {
+                window.localStorage.removeItem(activeProductionStorageKey);
+                setProduction(null);
+              }}
               className="mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-cyan-300 hover:bg-cyan-400/10"
             >
               ⌂ <span>Producciones</span>
