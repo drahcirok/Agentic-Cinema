@@ -63,6 +63,10 @@ class TicketRecord(Base):
     ai_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     supervisor_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     artist_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_gcs_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    evidence_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     supervisor_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

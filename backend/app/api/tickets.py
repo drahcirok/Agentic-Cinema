@@ -1,6 +1,9 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,6 +18,7 @@ from app.services.ticket_repository import (
 from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, create_production_repository
 from app.models.production import ProductionRole
 from app.models.ticket import ReviewDecision
+from app.services.video_storage import StorageConfigurationError, video_storage
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -148,3 +152,66 @@ async def quality_review_ticket(
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
     except TicketTransitionError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post("/{ticket_id}/evidence", response_model=Ticket)
+async def upload_ticket_evidence(
+    ticket_id: UUID,
+    evidence: UploadFile = File(...),
+    repo: TicketDataRepository = Depends(_repo),
+    productions: ProductionDataRepository = Depends(_production_repo),
+    user: CurrentUser = Depends(get_current_user),
+    x_production_id: UUID | None = Header(default=None),
+) -> Ticket:
+    """Attach an optional, small private image or PDF to an artist's delivery."""
+    _require_production_access(x_production_id, user, productions)
+    _require_role(x_production_id, user, productions, {ProductionRole.ARTIST})
+    visible = repo.list(user.uid, x_production_id)
+    if not any(ticket.id == ticket_id and ticket.assigned_to_uid == user.uid for ticket in visible):
+        raise HTTPException(status_code=403, detail="Esta tarea no está asignada a tu usuario.")
+
+    content_type = evidence.content_type or ""
+    extension = Path(evidence.filename or "evidence").suffix.lstrip(".") or "bin"
+    data = await evidence.read()
+    try:
+        gs_uri = video_storage.upload_evidence(data, content_type, extension)
+        return repo.attach_evidence(
+            ticket_id,
+            gs_uri,
+            Path(evidence.filename or "evidencia").name[:255],
+            content_type,
+            user.uid,
+            x_production_id,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except StorageConfigurationError as error:
+        raise HTTPException(status_code=503, detail="No se pudo preparar el almacenamiento de evidencia.") from error
+    except TicketNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
+    except TicketTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/{ticket_id}/evidence")
+async def download_ticket_evidence(
+    ticket_id: UUID,
+    repo: TicketDataRepository = Depends(_repo),
+    productions: ProductionDataRepository = Depends(_production_repo),
+    user: CurrentUser = Depends(get_current_user),
+    x_production_id: UUID | None = Header(default=None),
+) -> Response:
+    """Serve a delivery file only to members allowed to view its production."""
+    _require_production_access(x_production_id, user, productions)
+    role = _role_for(x_production_id, user, productions)
+    ticket = next((item for item in repo.list(user.uid, x_production_id) if item.id == ticket_id), None)
+    if ticket is None or (role is ProductionRole.ARTIST and ticket.assigned_to_uid != user.uid):
+        raise HTTPException(status_code=404, detail="Evidencia no encontrada")
+    if not ticket.evidence_gcs_uri:
+        raise HTTPException(status_code=404, detail="Este ticket no tiene evidencia adjunta.")
+    try:
+        content = video_storage.download_evidence(ticket.evidence_gcs_uri)
+    except (StorageConfigurationError, ValueError):
+        raise HTTPException(status_code=404, detail="Evidencia no disponible.") from None
+    headers = {"Content-Disposition": f'inline; filename="{ticket.evidence_name or "evidencia"}"'}
+    return Response(content=content, media_type=ticket.evidence_content_type or "application/octet-stream", headers=headers)

@@ -1,8 +1,9 @@
 from datetime import datetime
 from enum import StrEnum
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Department(StrEnum):
@@ -67,6 +68,17 @@ class TicketReview(BaseModel):
 class TicketWorkUpdate(BaseModel):
     status: ArtistWorkStatus
     artist_note: str | None = Field(default=None, max_length=1000)
+    delivery_link: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("delivery_link")
+    @classmethod
+    def validate_delivery_link(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("El enlace de entrega debe usar http:// o https://.")
+        return value
 
 
 class TicketQualityReview(BaseModel):
@@ -84,6 +96,10 @@ class Ticket(BaseModel):
     ai_rationale: str | None = None
     supervisor_note: str | None = None
     artist_note: str | None = None
+    delivery_link: str | None = None
+    evidence_gcs_uri: str | None = None
+    evidence_name: str | None = None
+    evidence_content_type: str | None = None
     supervisor_feedback: str | None = None
     # The production becomes the collaboration/security boundary. ``None`` is
     # retained only to render historical tickets created before team support.

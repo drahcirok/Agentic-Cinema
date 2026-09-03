@@ -47,6 +47,8 @@ class TicketDataRepository(Protocol):
 
     def update_work(self, ticket_id: UUID, update: TicketWorkUpdate, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
+    def attach_evidence(self, ticket_id: UUID, gs_uri: str, name: str, content_type: str, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
+
     def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
     def unassign_member_tasks(self, production_id: UUID, member_uid: str) -> int: ...
@@ -64,6 +66,10 @@ def _record_to_ticket(record: TicketRecord) -> Ticket:
         ai_rationale=record.ai_rationale,
         supervisor_note=record.supervisor_note,
         artist_note=record.artist_note,
+        delivery_link=record.delivery_link,
+        evidence_gcs_uri=record.evidence_gcs_uri,
+        evidence_name=record.evidence_name,
+        evidence_content_type=record.evidence_content_type,
         supervisor_feedback=record.supervisor_feedback,
         production_id=UUID(record.production_id) if record.production_id else None,
         assigned_to_uid=record.assigned_to_uid,
@@ -102,6 +108,10 @@ class TicketRepository:
             ai_rationale=payload.ai_rationale,
             supervisor_note=None,
             artist_note=None,
+            delivery_link=None,
+            evidence_gcs_uri=None,
+            evidence_name=None,
+            evidence_content_type=None,
             supervisor_feedback=None,
             created_at=now,
             updated_at=now,
@@ -154,6 +164,22 @@ class TicketRepository:
         record.status = str(update.status)
         if update.artist_note is not None:
             record.artist_note = update.artist_note
+        if update.delivery_link is not None:
+            record.delivery_link = update.delivery_link
+        record.updated_at = datetime.now(timezone.utc)
+        self._db.commit()
+        self._db.refresh(record)
+        return _record_to_ticket(record)
+
+    def attach_evidence(self, ticket_id: UUID, gs_uri: str, name: str, content_type: str, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
+        record: TicketRecord | None = self._db.get(TicketRecord, str(ticket_id))
+        if record is None or not self._can_access(record, owner_id, production_id):
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+        if TicketStatus(record.status) is not TicketStatus.IN_PROGRESS:
+            raise TicketTransitionError("Solo una tarea en proceso puede recibir evidencia.")
+        record.evidence_gcs_uri = gs_uri
+        record.evidence_name = name
+        record.evidence_content_type = content_type
         record.updated_at = datetime.now(timezone.utc)
         self._db.commit()
         self._db.refresh(record)
@@ -188,6 +214,10 @@ class TicketRepository:
             TicketRecord.assigned_to_uid: None,
             TicketRecord.assigned_to_name: None,
             TicketRecord.artist_note: None,
+            TicketRecord.delivery_link: None,
+            TicketRecord.evidence_gcs_uri: None,
+            TicketRecord.evidence_name: None,
+            TicketRecord.evidence_content_type: None,
             TicketRecord.supervisor_feedback: None,
             TicketRecord.updated_at: datetime.now(timezone.utc),
         }, synchronize_session=False)
@@ -248,6 +278,10 @@ class FirestoreTicketRepository:
             ai_rationale=data.get("ai_rationale"),  # type: ignore[arg-type]
             supervisor_note=data.get("supervisor_note"),  # type: ignore[arg-type]
             artist_note=data.get("artist_note"),  # type: ignore[arg-type]
+            delivery_link=data.get("delivery_link"),  # type: ignore[arg-type]
+            evidence_gcs_uri=data.get("evidence_gcs_uri"),  # type: ignore[arg-type]
+            evidence_name=data.get("evidence_name"),  # type: ignore[arg-type]
+            evidence_content_type=data.get("evidence_content_type"),  # type: ignore[arg-type]
             supervisor_feedback=data.get("supervisor_feedback"),  # type: ignore[arg-type]
             production_id=UUID(str(data["production_id"])) if data.get("production_id") else None,
             assigned_to_uid=data.get("assigned_to_uid"),  # type: ignore[arg-type]
@@ -274,6 +308,10 @@ class FirestoreTicketRepository:
             "ai_rationale": payload.ai_rationale,
             "supervisor_note": None,
             "artist_note": None,
+            "delivery_link": None,
+            "evidence_gcs_uri": None,
+            "evidence_name": None,
+            "evidence_content_type": None,
             "supervisor_feedback": None,
             "created_at": now,
             "updated_at": now,
@@ -327,6 +365,26 @@ class FirestoreTicketRepository:
         changes: dict[str, object] = {"status": str(update.status), "updated_at": datetime.now(timezone.utc)}
         if update.artist_note is not None:
             changes["artist_note"] = update.artist_note
+        if update.delivery_link is not None:
+            changes["delivery_link"] = update.delivery_link
+        reference.update(changes)
+        data.update(changes)
+        return self._document_to_ticket(str(ticket_id), data)
+
+    def attach_evidence(self, ticket_id: UUID, gs_uri: str, name: str, content_type: str, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
+        reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
+        snapshot = reference.get()
+        if not snapshot.exists or not self._can_access(snapshot.to_dict(), owner_id, production_id):
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+        data = snapshot.to_dict()
+        if TicketStatus(str(data["status"])) is not TicketStatus.IN_PROGRESS:
+            raise TicketTransitionError("Solo una tarea en proceso puede recibir evidencia.")
+        changes: dict[str, object] = {
+            "evidence_gcs_uri": gs_uri,
+            "evidence_name": name,
+            "evidence_content_type": content_type,
+            "updated_at": datetime.now(timezone.utc),
+        }
         reference.update(changes)
         data.update(changes)
         return self._document_to_ticket(str(ticket_id), data)
@@ -362,6 +420,10 @@ class FirestoreTicketRepository:
                 "assigned_to_uid": None,
                 "assigned_to_name": None,
                 "artist_note": None,
+                "delivery_link": None,
+                "evidence_gcs_uri": None,
+                "evidence_name": None,
+                "evidence_content_type": None,
                 "supervisor_feedback": None,
                 "updated_at": datetime.now(timezone.utc),
             })

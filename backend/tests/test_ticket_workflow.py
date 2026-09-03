@@ -55,7 +55,11 @@ def test_approved_ticket_moves_through_artist_and_qc_lifecycle(db_session) -> No
     )
     ready = repository.update_work(
         created.id,
-        TicketWorkUpdate(status=ArtistWorkStatus.READY_FOR_QC, artist_note="Roto limpio terminado."),
+        TicketWorkUpdate(
+            status=ArtistWorkStatus.READY_FOR_QC,
+            artist_note="Roto limpio terminado.",
+            delivery_link="https://example.com/revision-01",
+        ),
     )
     completed = repository.quality_review(
         created.id,
@@ -65,6 +69,7 @@ def test_approved_ticket_moves_through_artist_and_qc_lifecycle(db_session) -> No
     assert in_progress.status is TicketStatus.IN_PROGRESS
     assert ready.status is TicketStatus.READY_FOR_QC
     assert ready.artist_note == "Roto limpio terminado."
+    assert ready.delivery_link == "https://example.com/revision-01"
     assert completed.status is TicketStatus.COMPLETED
     assert completed.supervisor_feedback == "QC aprobado."
 
@@ -99,3 +104,20 @@ def test_cannot_send_assigned_ticket_to_qc_without_starting_work(db_session) -> 
         pass
     else:  # pragma: no cover - documents the expected transition guard
         raise AssertionError("Expected TicketTransitionError")
+
+
+def test_evidence_can_only_attach_while_artist_is_working(db_session) -> None:
+    repository = TicketRepository(db_session)
+    created = repository.create(_ticket())
+    repository.review(created.id, TicketReview(decision=ReviewDecision.APPROVE))
+    repository.update_work(created.id, TicketWorkUpdate(status=ArtistWorkStatus.IN_PROGRESS))
+
+    with_evidence = repository.attach_evidence(
+        created.id,
+        "gs://test-bucket/deliveries/evidence/proof.png",
+        "proof.png",
+        "image/png",
+    )
+
+    assert with_evidence.evidence_name == "proof.png"
+    assert with_evidence.evidence_content_type == "image/png"

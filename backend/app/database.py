@@ -107,6 +107,14 @@ def init_db() -> None:
             connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN assigned_to_name VARCHAR(120)"))
         if "artist_note" not in columns:
             connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN artist_note TEXT"))
+        if "delivery_link" not in columns:
+            connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN delivery_link TEXT"))
+        if "evidence_gcs_uri" not in columns:
+            connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN evidence_gcs_uri TEXT"))
+        if "evidence_name" not in columns:
+            connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN evidence_name VARCHAR(255)"))
+        if "evidence_content_type" not in columns:
+            connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN evidence_content_type VARCHAR(100)"))
         if "supervisor_feedback" not in columns:
             connection.execute(text("ALTER TABLE postproduction_tickets ADD COLUMN supervisor_feedback TEXT"))
 

@@ -44,7 +44,12 @@ type Ticket = {
   ai_rationale?: string | null;
   supervisor_note?: string | null;
   artist_note?: string | null;
+  delivery_link?: string | null;
+  evidence_gcs_uri?: string | null;
+  evidence_name?: string | null;
+  evidence_content_type?: string | null;
   supervisor_feedback?: string | null;
+  production_id?: string | null;
   assigned_to_uid?: string | null;
   assigned_to_name?: string | null;
 };
@@ -146,6 +151,23 @@ function TicketCard({
           {ticket.artist_note}
         </div>
       )}
+      {(ticket.delivery_link || ticket.evidence_gcs_uri) && (
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          {ticket.delivery_link && (
+            <a
+              href={ticket.delivery_link}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-cyan-400/30 px-2 py-1 font-semibold text-cyan-300 hover:bg-cyan-400/10"
+            >
+              Abrir enlace de entrega
+            </a>
+          )}
+          {ticket.evidence_gcs_uri && (
+            <EvidenceButton ticket={ticket} />
+          )}
+        </div>
+      )}
       {ticket.supervisor_feedback && (
         <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-slate-300">
           <span className="font-semibold text-amber-300">
@@ -160,6 +182,35 @@ function TicketCard({
         </div>
       )}
     </article>
+  );
+}
+
+function EvidenceButton({ ticket }: { ticket: Ticket }) {
+  const { getAuthHeaders } = useAuth();
+  const [opening, setOpening] = useState(false);
+
+  async function openEvidence() {
+    if (opening || !ticket.evidence_gcs_uri) return;
+    setOpening(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/tickets/${ticket.id}/evidence`, {
+        headers: ticket.production_id
+          ? { ...(await getAuthHeaders()), "X-Production-Id": ticket.production_id }
+          : await getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error("No se pudo abrir la evidencia.");
+      const url = URL.createObjectURL(await response.blob());
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  return (
+    <button onClick={() => void openEvidence()} className="rounded-md border border-violet-400/30 px-2 py-1 font-semibold text-violet-200 hover:bg-violet-400/10">
+      {opening ? "Abriendo…" : `Ver evidencia${ticket.evidence_name ? `: ${ticket.evidence_name}` : ""}`}
+    </button>
   );
 }
 
@@ -224,6 +275,8 @@ export default function Home() {
     type: WorkflowAction;
   } | null>(null);
   const [workflowNote, setWorkflowNote] = useState("");
+  const [deliveryLink, setDeliveryLink] = useState("");
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [production, setProduction] = useState<Production | null>(null);
   const [productions, setProductions] = useState<Production[]>([]);
   const [invitations, setInvitations] = useState<ProductionMember[]>([]);
@@ -562,7 +615,23 @@ export default function Home() {
         ? (ticket.artist_note ?? "")
         : (ticket.supervisor_feedback ?? ""),
     );
+    setDeliveryLink(type === "send_qc" ? (ticket.delivery_link ?? "") : "");
+    setEvidenceFile(null);
     setAssignedArtistId("");
+  }
+  async function uploadEvidence(ticketId: string, file: File): Promise<boolean> {
+    if (!production) return false;
+    const form = new FormData();
+    form.append("evidence", file);
+    const response = await fetch(`${apiBaseUrl}/tickets/${ticketId}/evidence`, {
+      method: "POST",
+      headers: { ...(await getAuthHeaders()), "X-Production-Id": production.id },
+      body: form,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail ?? "No se pudo subir la evidencia.");
+    setTickets((current) => current.map((item) => item.id === ticketId ? (data as Ticket) : item));
+    return true;
   }
   async function confirmWorkflowAction() {
     if (!workflowAction) return;
@@ -578,6 +647,8 @@ export default function Home() {
       return;
     }
     const artist = members.find((member) => member.uid === assignedArtistId);
+    try {
+    if (type === "send_qc" && evidenceFile) await uploadEvidence(ticket.id, evidenceFile);
     const ok =
       type === "assign"
         ? await updateTicket(ticket.id, "review", {
@@ -590,12 +661,16 @@ export default function Home() {
           ? await updateTicket(ticket.id, "work", {
               status: "ready_for_qc",
               artist_note: workflowNote.trim() || null,
+              delivery_link: deliveryLink.trim() || null,
             })
           : await updateTicket(ticket.id, "quality-review", {
               decision: type === "complete" ? "approve" : "return_for_rework",
               supervisor_feedback: workflowNote.trim() || null,
             });
     if (ok) setWorkflowAction(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo guardar la entrega.");
+    }
   }
 
   const pending = useMemo(
@@ -1514,6 +1589,30 @@ export default function Home() {
                       className="mt-2 w-full rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300"
                     />
                   </label>
+                  {workflowAction.type === "send_qc" && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Enlace de entrega <span className="normal-case text-slate-500">(opcional)</span>
+                        <input
+                          type="url"
+                          value={deliveryLink}
+                          onChange={(event) => setDeliveryLink(event.target.value)}
+                          maxLength={2048}
+                          placeholder="https://drive.google.com/..."
+                          className="mt-2 w-full rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Evidencia visual <span className="normal-case text-slate-500">(opcional, máx. 5 MB)</span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
+                          onChange={(event) => setEvidenceFile(event.target.files?.[0] ?? null)}
+                          className="mt-2 block w-full text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-slate-600"
+                        />
+                      </label>
+                    </div>
+                  )}
                 </>
               )}
               <div className="mt-6 flex justify-end gap-3">

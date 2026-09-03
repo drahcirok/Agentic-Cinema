@@ -72,6 +72,9 @@ MAX_VIDEO_SIZE_BYTES: int = 50 * 1024 * 1024
 
 #: GCS object prefix under which all uploaded videos are stored.
 _UPLOAD_PREFIX = "uploads/videos"
+_EVIDENCE_PREFIX = "deliveries/evidence"
+ALLOWED_EVIDENCE_MIME_TYPES: frozenset[str] = frozenset({"image/jpeg", "image/png", "image/webp", "application/pdf"})
+MAX_EVIDENCE_SIZE_BYTES: int = 5 * 1024 * 1024
 
 #: Only characters that are safe in GCS object names and unambiguous in URIs.
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-\.]+$")
@@ -280,6 +283,27 @@ class VideoStorageService:
                 type(exc).__name__,
                 object_name,
             )
+
+    def upload_evidence(self, data: bytes, mime_type: str, extension: str) -> str:
+        """Store a small, private QC evidence file and return its GCS URI."""
+        if mime_type not in ALLOWED_EVIDENCE_MIME_TYPES:
+            raise ValueError("El archivo debe ser una imagen JPG, PNG, WEBP o un PDF.")
+        if len(data) > MAX_EVIDENCE_SIZE_BYTES:
+            raise ValueError("La evidencia no puede superar 5 MB.")
+        if not is_safe_object_name(extension):
+            raise ValueError("La extensión del archivo no es válida.")
+        object_name = f"{_EVIDENCE_PREFIX}/{uuid.uuid4()}.{extension.lower()}"
+        blob = self._get_bucket().blob(object_name)
+        blob.upload_from_string(data, content_type=mime_type)
+        return f"gs://{self._bucket_name}/{object_name}"
+
+    def download_evidence(self, gs_uri: str) -> bytes:
+        """Read only objects written by :meth:`upload_evidence`."""
+        expected_prefix = f"gs://{self._bucket_name}/{_EVIDENCE_PREFIX}/"
+        if not self._bucket_name or not gs_uri.startswith(expected_prefix):
+            raise ValueError("La evidencia solicitada no es válida.")
+        object_name = gs_uri[len(f"gs://{self._bucket_name}/"):]
+        return self._get_bucket().blob(object_name).download_as_bytes()
 
 
 # ---------------------------------------------------------------------------
