@@ -33,6 +33,16 @@ type ProductionMember = {
   email?: string | null;
   membership_status?: "pending" | "accepted" | "declined";
 };
+type AppNotification = {
+  id: string;
+  type: "invitation" | "task_assigned" | "qc_ready" | "qc_returned" | "qc_completed";
+  title: string;
+  message: string;
+  production_id?: string | null;
+  ticket_id?: string | null;
+  created_at: string;
+  read_at?: string | null;
+};
 
 type Ticket = {
   id: string;
@@ -106,6 +116,14 @@ async function fetchInvitations(
     headers,
   });
   if (!response.ok) throw new Error("No se pudieron cargar tus invitaciones.");
+  return response.json();
+}
+
+async function fetchNotifications(
+  headers: Record<string, string>,
+): Promise<AppNotification[]> {
+  const response = await fetch(`${apiBaseUrl}/notifications`, { headers });
+  if (!response.ok) throw new Error("No se pudieron cargar tus notificaciones.");
   return response.json();
 }
 
@@ -255,6 +273,64 @@ function TicketColumn({
   );
 }
 
+function NotificationBell({
+  notifications,
+  open,
+  onToggle,
+  onRead,
+  onReadAll,
+}: {
+  notifications: AppNotification[];
+  open: boolean;
+  onToggle: () => void;
+  onRead: (notification: AppNotification) => void;
+  onReadAll: () => void;
+}) {
+  const unread = notifications.filter((item) => !item.read_at).length;
+  return (
+    <div className="relative">
+      <button
+        onClick={onToggle}
+        aria-label="Ver notificaciones"
+        className="relative grid h-10 w-10 place-items-center rounded-lg border border-slate-600 text-lg text-slate-200 hover:border-cyan-300 hover:text-cyan-300"
+      >
+        🔔
+        {unread > 0 && (
+          <span className="absolute -right-2 -top-2 grid min-h-5 min-w-5 place-items-center rounded-full bg-cyan-300 px-1 text-[10px] font-bold text-cyan-950">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+      {open && (
+        <section className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-xl border border-slate-700 bg-[#101b2b] shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
+            <p className="text-sm font-semibold text-white">Notificaciones</p>
+            {unread > 0 && (
+              <button onClick={onReadAll} className="text-xs font-semibold text-cyan-300 hover:underline">
+                Marcar leídas
+              </button>
+            )}
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <p className="p-4 text-sm text-slate-500">No tienes notificaciones.</p>
+            ) : notifications.map((notification) => (
+              <button
+                key={notification.id}
+                onClick={() => onRead(notification)}
+                className={`w-full border-b border-slate-800 px-4 py-3 text-left hover:bg-slate-800/60 ${notification.read_at ? "opacity-60" : "bg-cyan-400/5"}`}
+              >
+                <p className="text-sm font-semibold text-slate-100">{notification.title}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">{notification.message}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const {
     user,
@@ -280,6 +356,8 @@ export default function Home() {
   const [production, setProduction] = useState<Production | null>(null);
   const [productions, setProductions] = useState<Production[]>([]);
   const [invitations, setInvitations] = useState<ProductionMember[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [newProductionName, setNewProductionName] = useState("");
   const [renamingProductionId, setRenamingProductionId] = useState<
     string | null
@@ -310,21 +388,32 @@ export default function Home() {
     }
   }, [getAuthHeaders, production]);
 
+  const refreshNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      setNotifications(await fetchNotifications(await getAuthHeaders()));
+    } catch {
+      // Notifications should never prevent normal work if a transient request fails.
+    }
+  }, [getAuthHeaders, user]);
+
   useEffect(() => {
     let current = true;
     async function loadInitialTickets() {
       if (!user) return;
       try {
         const headers = await getAuthHeaders();
-        const [availableProductions, pendingInvitations] = await Promise.all([
+        const [availableProductions, pendingInvitations, userNotifications] = await Promise.all([
           fetchProductions(headers),
           fetchInvitations(headers),
+          fetchNotifications(headers),
         ]);
         if (current) {
           setTickets([]);
           setProduction(null);
           setProductions(availableProductions);
           setInvitations(pendingInvitations);
+          setNotifications(userNotifications);
           setMembers([]);
         }
       } catch {
@@ -339,6 +428,35 @@ export default function Home() {
       current = false;
     };
   }, [user, getAuthHeaders]);
+
+  useEffect(() => {
+    if (!user) return;
+    const interval = window.setInterval(() => void refreshNotifications(), 30_000);
+    return () => window.clearInterval(interval);
+  }, [user, refreshNotifications]);
+
+  async function markNotificationRead(notification: AppNotification) {
+    if (notification.read_at) return;
+    try {
+      const response = await fetch(`${apiBaseUrl}/notifications/${notification.id}/read`, {
+        method: "PATCH",
+        headers: await getAuthHeaders(),
+      });
+      const updated = await response.json();
+      if (response.ok) setNotifications((current) => current.map((item) => item.id === notification.id ? updated as AppNotification : item));
+    } catch {
+      // The inbox remains readable even when marking an item fails.
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    try {
+      const response = await fetch(`${apiBaseUrl}/notifications/read-all`, { method: "PATCH", headers: await getAuthHeaders() });
+      if (response.ok) setNotifications((current) => current.map((item) => ({ ...item, read_at: new Date().toISOString() })));
+    } catch {
+      // Retry on the next interaction or polling interval.
+    }
+  }
 
   async function updateTicket(
     ticketId: string,
@@ -779,14 +897,23 @@ export default function Home() {
                 <span className="font-mono text-cyan-300">{user.uid}</span>
               </p>
             </div>
-            <div className="text-right text-xs text-slate-400">
-              <p>{user.displayName ?? user.email}</p>
-              <button
-                onClick={() => void signOut()}
-                className="mt-1 text-cyan-300 hover:underline"
-              >
-                Cerrar sesión
-              </button>
+            <div className="flex items-center gap-3">
+              <NotificationBell
+                notifications={notifications}
+                open={notificationsOpen}
+                onToggle={() => setNotificationsOpen((current) => !current)}
+                onRead={(notification) => void markNotificationRead(notification)}
+                onReadAll={() => void markAllNotificationsRead()}
+              />
+              <div className="text-right text-xs text-slate-400">
+                <p>{user.displayName ?? user.email}</p>
+                <button
+                  onClick={() => void signOut()}
+                  className="mt-1 text-cyan-300 hover:underline"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
             </div>
           </header>
           {error && (
@@ -966,6 +1093,13 @@ export default function Home() {
             </p>
           </div>
           <div className="flex items-end gap-4">
+            <NotificationBell
+              notifications={notifications}
+              open={notificationsOpen}
+              onToggle={() => setNotificationsOpen((current) => !current)}
+              onRead={(notification) => void markNotificationRead(notification)}
+              onReadAll={() => void markAllNotificationsRead()}
+            />
             <div className="hidden text-right text-xs text-slate-400 sm:block">
               <p>{user.displayName ?? user.email}</p>
               <button

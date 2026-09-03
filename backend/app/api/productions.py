@@ -11,6 +11,8 @@ from app.models.production import InvitationResponse, MembershipStatus, Producti
 from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, ProductionPermissionError, create_production_repository
 from app.services.production_repository import ProductionMemberRemovalError
 from app.services.ticket_repository import TicketDataRepository, create_ticket_repository
+from app.models.notification import NotificationType
+from app.services.notification_repository import NotificationDataRepository, create_notification_repository
 
 router = APIRouter(prefix="/productions", tags=["Productions"])
 
@@ -21,6 +23,10 @@ def _repo(db: Session | None = Depends(get_db)) -> ProductionDataRepository:
 
 def _ticket_repo(db: Session | None = Depends(get_db)) -> TicketDataRepository:
     return create_ticket_repository(db)
+
+
+def _notification_repo(db: Session | None = Depends(get_db)) -> NotificationDataRepository:
+    return create_notification_repository(db)
 
 
 @router.post("/bootstrap", response_model=Production)
@@ -72,9 +78,12 @@ async def list_members(production_id: UUID, repo: ProductionDataRepository = Dep
 
 
 @router.post("/{production_id}/members", response_model=ProductionMember, status_code=status.HTTP_201_CREATED)
-async def add_member(production_id: UUID, payload: ProductionMemberCreate, repo: ProductionDataRepository = Depends(_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
+async def add_member(production_id: UUID, payload: ProductionMemberCreate, repo: ProductionDataRepository = Depends(_repo), notifications: NotificationDataRepository = Depends(_notification_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
     try:
-        return repo.add_member(production_id, payload, user.uid)
+        member = repo.add_member(production_id, payload, user.uid)
+        if member.membership_status is MembershipStatus.PENDING:
+            notifications.create(member.uid, NotificationType.INVITATION, "Nueva invitación", "Te invitaron a una producción. Revisa y responde la invitación.", production_id=production_id)
+        return member
     except ProductionNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Producción no encontrada.") from exc
     except ProductionPermissionError as exc:

@@ -17,8 +17,10 @@ from app.services.ticket_repository import (
 )
 from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, create_production_repository
 from app.models.production import ProductionRole
-from app.models.ticket import ReviewDecision
+from app.models.ticket import QualityDecision, ReviewDecision
 from app.services.video_storage import StorageConfigurationError, video_storage
+from app.models.notification import NotificationType
+from app.services.notification_repository import NotificationDataRepository, create_notification_repository
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -29,6 +31,10 @@ def _repo(db: Session | None = Depends(get_db)) -> TicketDataRepository:
 
 def _production_repo(db: Session | None = Depends(get_db)) -> ProductionDataRepository:
     return create_production_repository(db)
+
+
+def _notification_repo(db: Session | None = Depends(get_db)) -> NotificationDataRepository:
+    return create_notification_repository(db)
 
 
 def _require_production_access(production_id: UUID | None, user: CurrentUser, productions: ProductionDataRepository) -> None:
@@ -98,6 +104,7 @@ async def review_ticket(
     review: TicketReview,
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
+    notifications: NotificationDataRepository = Depends(_notification_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -106,7 +113,10 @@ async def review_ticket(
         _require_production_access(x_production_id, user, productions)
         _require_role(x_production_id, user, productions, {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR})
         _validate_artist_assignment(review, x_production_id, user, productions)
-        return repo.review(ticket_id, review, user.uid, x_production_id)
+        ticket = repo.review(ticket_id, review, user.uid, x_production_id)
+        if review.decision is ReviewDecision.APPROVE and ticket.assigned_to_uid:
+            notifications.create(ticket.assigned_to_uid, NotificationType.TASK_ASSIGNED, "Nueva tarea asignada", f"{ticket.shot_id}: tienes una tarea de {ticket.department.upper()} asignada.", x_production_id, ticket.id)
+        return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
 
@@ -117,6 +127,7 @@ async def update_artist_work(
     update: TicketWorkUpdate,
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
+    notifications: NotificationDataRepository = Depends(_notification_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -127,7 +138,12 @@ async def update_artist_work(
         visible = repo.list(user.uid, x_production_id)
         if not any(ticket.id == ticket_id and ticket.assigned_to_uid == user.uid for ticket in visible):
             raise HTTPException(status_code=403, detail="Esta tarea no está asignada a tu usuario.")
-        return repo.update_work(ticket_id, update, user.uid, x_production_id)
+        ticket = repo.update_work(ticket_id, update, user.uid, x_production_id)
+        if update.status is not None and str(update.status) == "ready_for_qc" and x_production_id:
+            for member in productions.list_members(x_production_id, user.uid):
+                if member.role in {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR}:
+                    notifications.create(member.uid, NotificationType.QC_READY, "Entrega lista para QC", f"{ticket.shot_id} fue enviada a control de calidad.", x_production_id, ticket.id)
+        return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
     except TicketTransitionError as error:
@@ -140,6 +156,7 @@ async def quality_review_ticket(
     review: TicketQualityReview,
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
+    notifications: NotificationDataRepository = Depends(_notification_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -147,7 +164,12 @@ async def quality_review_ticket(
     try:
         _require_production_access(x_production_id, user, productions)
         _require_role(x_production_id, user, productions, {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR})
-        return repo.quality_review(ticket_id, review, user.uid, x_production_id)
+        ticket = repo.quality_review(ticket_id, review, user.uid, x_production_id)
+        if ticket.assigned_to_uid:
+            kind = NotificationType.QC_COMPLETED if review.decision is QualityDecision.APPROVE else NotificationType.QC_RETURNED
+            title = "Tarea aprobada en QC" if review.decision is QualityDecision.APPROVE else "Tarea devuelta para corrección"
+            notifications.create(ticket.assigned_to_uid, kind, title, f"{ticket.shot_id}: {review.supervisor_feedback or 'Revisa el estado de tu tarea.'}", x_production_id, ticket.id)
+        return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
     except TicketTransitionError as error:

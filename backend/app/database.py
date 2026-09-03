@@ -86,6 +86,7 @@ def init_db() -> None:
     # Import models so their Table definitions are registered before create_all.
     import app.models.ticket_record  # noqa: F401
     import app.models.production_record  # noqa: F401
+    import app.models.notification_record  # noqa: F401
 
     assert engine is not None
     Base.metadata.create_all(bind=engine)

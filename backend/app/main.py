@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.ingestion import router as ingestion_router
+from app.api.notifications import router as notifications_router
 from app.api.productions import router as productions_router
 from app.api.tickets import router as tickets_router
 from app.core.config import settings
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(tickets_router, prefix="/api/v1")
 app.include_router(ingestion_router, prefix="/api/v1")
 app.include_router(productions_router, prefix="/api/v1")
+app.include_router(notifications_router, prefix="/api/v1")
 
 
 @app.get("/health")
