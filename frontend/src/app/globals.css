@@ -50,6 +50,9 @@
 
 /* ---- FrameFlow custom utilities ---- */
 * { box-sizing: border-box; }
+html { background: #09111d; }
+body { min-width: 320px; overflow-x: hidden; }
+button, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 
 .priority { border-radius: 9999px; padding: 0.2rem 0.55rem; font-size: 0.7rem; font-weight: 700; }
 .priority-low    { background: #1e3a5f; color: #bfdbfe; }
@@ -57,11 +60,17 @@
 .priority-high   { background: #713b13; color: #fed7aa; }
 .priority-critical { background: #6b1e35; color: #fecdd3; }
 
-.action-button { border-radius: 0.5rem; padding: 0.4rem 0.6rem; font-size: 0.75rem; font-weight: 700; transition: opacity 150ms; }
+.action-button { min-height: 2.25rem; border-radius: 0.5rem; padding: 0.4rem 0.6rem; font-size: 0.75rem; font-weight: 700; transition: background-color 150ms, border-color 150ms, opacity 150ms; }
+.action-button:not(:disabled):hover { opacity: 0.85; }
 .action-button:disabled { cursor: wait; opacity: 0.5; }
 .approve { background: #22d3ee; color: #083344; }
 .reject  { border: 1px solid #475569; color: #cbd5e1; }
 .edit    { border: 1px solid #4f6282; color: #93c5fd; }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: 2px;
+}
 
 /* ---- shadcn/ui tokens — always dark (FrameFlow has no light mode) ---- */
 :root {

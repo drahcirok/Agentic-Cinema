@@ -174,7 +174,7 @@ function TicketCard({
   onRemoveEvidence?: (ticket: Ticket) => void;
 }) {
   return (
-    <article className="rounded-xl border border-slate-700 bg-[#162337] p-4 transition hover:border-slate-500">
+    <article className="min-w-0 rounded-xl border border-slate-700 bg-[#162337] p-4 transition hover:border-slate-500">
       <div className="mb-3 flex items-center justify-between gap-3">
         <span className="font-mono text-xs text-cyan-300">
           {ticket.shot_id}
@@ -183,7 +183,7 @@ function TicketCard({
           {priorityLabel[ticket.priority]}
         </span>
       </div>
-      <p className="text-sm leading-6 text-slate-200">{ticket.director_note}</p>
+      <p className="break-words text-sm leading-6 text-slate-200">{ticket.director_note}</p>
       <p className="mt-2 text-xs font-medium uppercase tracking-wide text-slate-400">
         {departmentLabel[ticket.department]} · {statusLabel[ticket.status]}
       </p>
@@ -288,9 +288,9 @@ function TicketColumn({
   children: (ticket: Ticket) => React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-700/70 bg-[#101b2b] p-4 shadow-2xl shadow-black/10">
-      <div className="mb-5 flex items-start justify-between">
-        <div>
+    <section className="min-w-0 rounded-2xl border border-slate-700/70 bg-[#101b2b] p-4 shadow-2xl shadow-black/10">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="font-semibold text-white">{title}</h2>
           <p className="mt-1 text-xs text-slate-500">{description}</p>
         </div>
@@ -298,7 +298,7 @@ function TicketColumn({
           {tickets.length}
         </span>
       </div>
-      <div className="space-y-3">
+      <div className="max-h-[42rem] space-y-3 overflow-y-auto pr-1">
         {loading && (
           <p className="rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-500">
             Cargando tickets…
@@ -344,7 +344,7 @@ function NotificationBell({
         )}
       </button>
       {open && (
-        <section className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-xl border border-slate-700 bg-[#101b2b] shadow-2xl">
+        <section className="absolute right-0 z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-700 bg-[#101b2b] shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
             <p className="text-sm font-semibold text-white">Notificaciones</p>
             {unread > 0 && (
@@ -1286,7 +1286,7 @@ export default function Home() {
     );
 
   return (
-    <main className="min-h-screen bg-[#09111d] px-5 py-8 text-slate-100 sm:px-8 lg:px-12">
+    <main className="min-h-screen bg-[#09111d] px-4 py-5 text-slate-100 sm:px-8 sm:py-8 lg:px-12">
       <section className="mx-auto max-w-7xl">
         <header className="mb-7 flex flex-col justify-between gap-6 border-b border-slate-700/70 pb-7 md:flex-row md:items-end">
           <div>
@@ -1301,7 +1301,7 @@ export default function Home() {
               postproducción.
             </p>
           </div>
-          <div className="flex items-end gap-4">
+          <div className="flex flex-wrap items-end gap-3 sm:gap-4">
             <NotificationBell
               notifications={notifications}
               open={notificationsOpen}
@@ -1309,8 +1309,8 @@ export default function Home() {
               onRead={(notification) => void openNotification(notification)}
               onReadAll={() => void markAllNotificationsRead()}
             />
-            <div className="hidden text-right text-xs text-slate-400 sm:block">
-              <p>{user.displayName ?? user.email}</p>
+            <div className="max-w-36 text-right text-xs text-slate-400 sm:max-w-48">
+              <p className="truncate">{user.displayName ?? user.email}</p>
               <button
                 onClick={() => void signOut()}
                 className="mt-1 text-cyan-300 hover:underline"
@@ -1421,14 +1421,17 @@ export default function Home() {
           </aside>
           <div className="min-w-0">
             {error && (
-              <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
-                <span>{error}</span>
+              <div role="alert" className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                <span className="min-w-0 break-words">{error}</span>
+                <div className="flex shrink-0 items-center gap-3">
                 <button
                   className="underline underline-offset-4"
                   onClick={() => void loadTickets()}
                 >
                   Reintentar
                 </button>
+                  <button aria-label="Cerrar mensaje de error" onClick={() => setError(null)} className="text-lg leading-none hover:text-white">×</button>
+                </div>
               </div>
             )}
             {view === "decisions" && production && canSupervise && (
