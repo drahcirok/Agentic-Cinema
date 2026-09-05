@@ -211,7 +211,8 @@ async def upload_ticket_evidence(
     _require_production_access(x_production_id, user, productions)
     _require_role(x_production_id, user, productions, {ProductionRole.ARTIST})
     visible = repo.list(user.uid, x_production_id)
-    if not any(ticket.id == ticket_id and ticket.assigned_to_uid == user.uid for ticket in visible):
+    current_ticket = next((ticket for ticket in visible if ticket.id == ticket_id and ticket.assigned_to_uid == user.uid), None)
+    if current_ticket is None:
         raise HTTPException(status_code=403, detail="Esta tarea no está asignada a tu usuario.")
 
     content_type = evidence.content_type or ""
@@ -227,12 +228,46 @@ async def upload_ticket_evidence(
             user.uid,
             x_production_id,
         )
-        activities.record(ticket.id, x_production_id, user.uid, user.name, "Evidencia adjuntada", ticket.evidence_name)
+        if current_ticket.evidence_gcs_uri and current_ticket.evidence_gcs_uri != gs_uri:
+            video_storage.delete_object(current_ticket.evidence_gcs_uri)
+        action = "Evidencia reemplazada" if current_ticket.evidence_gcs_uri else "Evidencia adjuntada"
+        activities.record(ticket.id, x_production_id, user.uid, user.name, action, ticket.evidence_name)
         return ticket
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except StorageConfigurationError as error:
         raise HTTPException(status_code=503, detail="No se pudo preparar el almacenamiento de evidencia.") from error
+    except TicketNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
+    except TicketTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.delete("/{ticket_id}/evidence", response_model=Ticket)
+async def remove_ticket_evidence(
+    ticket_id: UUID,
+    repo: TicketDataRepository = Depends(_repo),
+    productions: ProductionDataRepository = Depends(_production_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
+    user: CurrentUser = Depends(get_current_user),
+    x_production_id: UUID | None = Header(default=None),
+) -> Ticket:
+    """Remove optional evidence while an artist is still working on the task."""
+    _require_production_access(x_production_id, user, productions)
+    _require_role(x_production_id, user, productions, {ProductionRole.ARTIST})
+    current_ticket = next(
+        (ticket for ticket in repo.list(user.uid, x_production_id) if ticket.id == ticket_id and ticket.assigned_to_uid == user.uid),
+        None,
+    )
+    if current_ticket is None:
+        raise HTTPException(status_code=403, detail="Esta tarea no está asignada a tu usuario.")
+    if not current_ticket.evidence_gcs_uri:
+        raise HTTPException(status_code=404, detail="Este ticket no tiene evidencia adjunta.")
+    try:
+        ticket = repo.clear_evidence(ticket_id, user.uid, x_production_id)
+        video_storage.delete_object(current_ticket.evidence_gcs_uri)
+        activities.record(ticket.id, x_production_id, user.uid, user.name, "Evidencia eliminada", current_ticket.evidence_name)
+        return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
     except TicketTransitionError as error:

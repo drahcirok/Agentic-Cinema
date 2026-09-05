@@ -121,3 +121,8 @@ def test_evidence_can_only_attach_while_artist_is_working(db_session) -> None:
 
     assert with_evidence.evidence_name == "proof.png"
     assert with_evidence.evidence_content_type == "image/png"
+
+    without_evidence = repository.clear_evidence(created.id)
+
+    assert without_evidence.evidence_gcs_uri is None
+    assert without_evidence.evidence_name is None

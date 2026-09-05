@@ -166,10 +166,12 @@ function TicketCard({
   ticket,
   children,
   onViewActivity,
+  onRemoveEvidence,
 }: {
   ticket: Ticket;
   children?: React.ReactNode;
   onViewActivity?: (ticket: Ticket) => void;
+  onRemoveEvidence?: (ticket: Ticket) => void;
 }) {
   return (
     <article className="rounded-xl border border-slate-700 bg-[#162337] p-4 transition hover:border-slate-500">
@@ -207,6 +209,14 @@ function TicketCard({
           )}
           {ticket.evidence_gcs_uri && (
             <EvidenceButton ticket={ticket} />
+          )}
+          {ticket.evidence_gcs_uri && onRemoveEvidence && (
+            <button
+              onClick={() => onRemoveEvidence(ticket)}
+              className="rounded-md border border-rose-400/30 px-2 py-1 font-semibold text-rose-200 hover:bg-rose-400/10"
+            >
+              Quitar evidencia
+            </button>
           )}
         </div>
       )}
@@ -385,6 +395,7 @@ export default function Home() {
   const [workflowNote, setWorkflowNote] = useState("");
   const [deliveryLink, setDeliveryLink] = useState("");
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidenceToRemove, setEvidenceToRemove] = useState<Ticket | null>(null);
   const [production, setProduction] = useState<Production | null>(null);
   const [productions, setProductions] = useState<Production[]>([]);
   const [invitations, setInvitations] = useState<ProductionMember[]>([]);
@@ -882,6 +893,25 @@ export default function Home() {
     if (!response.ok) throw new Error(data.detail ?? "No se pudo subir la evidencia.");
     setTickets((current) => current.map((item) => item.id === ticketId ? (data as Ticket) : item));
     return true;
+  }
+  async function removeEvidence(ticket: Ticket) {
+    if (!production) return;
+    setProcessingId(ticket.id);
+    setError(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/tickets/${ticket.id}/evidence`, {
+        method: "DELETE",
+        headers: { ...(await getAuthHeaders()), "X-Production-Id": production.id },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "No se pudo quitar la evidencia.");
+      setTickets((current) => current.map((item) => item.id === ticket.id ? (data as Ticket) : item));
+      setEvidenceToRemove(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo quitar la evidencia.");
+    } finally {
+      setProcessingId(null);
+    }
   }
   async function confirmWorkflowAction() {
     if (!workflowAction) return;
@@ -1591,7 +1621,11 @@ export default function Home() {
                     loading={loading}
                   >
                     {(ticket) => (
-                      <TicketCard key={ticket.id} ticket={ticket}>
+                      <TicketCard
+                        key={ticket.id}
+                        ticket={ticket}
+                        onRemoveEvidence={canWork ? setEvidenceToRemove : undefined}
+                      >
                         {canWork && (
                           <button
                             disabled={processingId === ticket.id}
@@ -1923,6 +1957,28 @@ export default function Home() {
             </section>
           </div>
         )}
+        {evidenceToRemove && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/75 p-4">
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="remove-evidence-title"
+              className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-[#101b2b] p-6 shadow-2xl"
+            >
+              <p className="text-xs font-bold tracking-[0.2em] text-rose-300">FRAMEFLOW / ENTREGA</p>
+              <h2 id="remove-evidence-title" className="mt-2 text-xl font-semibold text-white">Quitar evidencia</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                Se eliminará <span className="font-semibold text-white">{evidenceToRemove.evidence_name ?? "esta evidencia"}</span> de esta tarea y del almacenamiento privado. Podrás adjuntar otra antes de enviarla a QC.
+              </p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button onClick={() => setEvidenceToRemove(null)} disabled={processingId === evidenceToRemove.id} className="action-button reject">Cancelar</button>
+                <button onClick={() => void removeEvidence(evidenceToRemove)} disabled={processingId === evidenceToRemove.id} className="rounded-lg bg-rose-400 px-4 py-2 text-sm font-bold text-rose-950 hover:bg-rose-300">
+                  {processingId === evidenceToRemove.id ? "Quitando…" : "Quitar evidencia"}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
         {workflowAction && (
           <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/75 p-4">
             <section
@@ -2013,7 +2069,7 @@ export default function Home() {
                         />
                       </label>
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Evidencia visual <span className="normal-case text-slate-500">(opcional, máx. 5 MB)</span>
+                        Evidencia visual <span className="normal-case text-slate-500">(opcional, máx. 5 MB{workflowAction.ticket.evidence_gcs_uri ? "; reemplaza la actual" : ""})</span>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp,application/pdf"
