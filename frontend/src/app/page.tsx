@@ -410,6 +410,9 @@ export default function Home() {
   const [activityTicket, setActivityTicket] = useState<Ticket | null>(null);
   const [ticketActivity, setTicketActivity] = useState<TicketActivity[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyDepartment, setHistoryDepartment] = useState<"all" | Department>("all");
+  const [historyArtist, setHistoryArtist] = useState("all");
   const activeProductionId = production?.id;
 
   const loadTickets = useCallback(async () => {
@@ -555,6 +558,18 @@ export default function Home() {
       if (response.ok) setNotifications((current) => current.map((item) => ({ ...item, read_at: new Date().toISOString() })));
     } catch {
       // Retry on the next interaction or polling interval.
+    }
+  }
+
+  async function openNotification(notification: AppNotification) {
+    await markNotificationRead(notification);
+    if (!notification.production_id) return;
+    const target = productions.find(
+      (item) => item.id === notification.production_id,
+    );
+    if (target) {
+      setNotificationsOpen(false);
+      await openProduction(target);
     }
   }
 
@@ -935,10 +950,6 @@ export default function Home() {
     () => tickets.filter((ticket) => ticket.status === "completed"),
     [tickets],
   );
-  const rejected = useMemo(
-    () => tickets.filter((ticket) => ticket.status === "rejected"),
-    [tickets],
-  );
   const activeWork = useMemo(
     () =>
       tickets.filter((ticket) =>
@@ -947,6 +958,27 @@ export default function Home() {
         ),
       ),
     [tickets],
+  );
+  const historyTickets = useMemo(
+    () =>
+      tickets.filter((ticket) => {
+        if (!["completed", "rejected"].includes(ticket.status)) return false;
+        if (historyDepartment !== "all" && ticket.department !== historyDepartment)
+          return false;
+        if (historyArtist !== "all" && ticket.assigned_to_uid !== historyArtist)
+          return false;
+        const query = historySearch.trim().toLowerCase();
+        return !query || `${ticket.shot_id} ${ticket.director_note} ${ticket.assigned_to_name ?? ""}`.toLowerCase().includes(query);
+      }),
+    [tickets, historyDepartment, historyArtist, historySearch],
+  );
+  const filteredCompleted = useMemo(
+    () => historyTickets.filter((ticket) => ticket.status === "completed"),
+    [historyTickets],
+  );
+  const filteredRejected = useMemo(
+    () => historyTickets.filter((ticket) => ticket.status === "rejected"),
+    [historyTickets],
   );
   const departmentMetrics = useMemo(
     () =>
@@ -1049,7 +1081,7 @@ export default function Home() {
                 notifications={notifications}
                 open={notificationsOpen}
                 onToggle={() => setNotificationsOpen((current) => !current)}
-                onRead={(notification) => void markNotificationRead(notification)}
+                onRead={(notification) => void openNotification(notification)}
                 onReadAll={() => void markAllNotificationsRead()}
               />
               <div className="text-right text-xs text-slate-400">
@@ -1244,7 +1276,7 @@ export default function Home() {
               notifications={notifications}
               open={notificationsOpen}
               onToggle={() => setNotificationsOpen((current) => !current)}
-              onRead={(notification) => void markNotificationRead(notification)}
+              onRead={(notification) => void openNotification(notification)}
               onReadAll={() => void markAllNotificationsRead()}
             />
             <div className="hidden text-right text-xs text-slate-400 sm:block">
@@ -1800,23 +1832,46 @@ export default function Home() {
               </section>
             )}
             {view === "history" && (
-              <section className="grid gap-6 lg:grid-cols-2">
-                <TicketColumn
-                  title="Completadas"
-                  description="Entregables aprobados por control de calidad"
-                  tickets={completed}
-                  loading={loading}
-                >
-                  {(ticket) => <TicketCard key={ticket.id} ticket={ticket} onViewActivity={(item) => void openTicketActivity(item)} />}
-                </TicketColumn>
-                <TicketColumn
-                  title="Rechazadas"
-                  description="Notas que no avanzaron a producción"
-                  tickets={rejected}
-                  loading={loading}
-                >
-                  {(ticket) => <TicketCard key={ticket.id} ticket={ticket} onViewActivity={(item) => void openTicketActivity(item)} />}
-                </TicketColumn>
+              <section>
+                <div className="mb-6">
+                  <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">PRODUCCIÓN / TRAZABILIDAD</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">Historial de entregas</h2>
+                  <p className="mt-1 text-sm text-slate-400">Busca decisiones pasadas y abre su línea de tiempo completa.</p>
+                </div>
+                <div className="mb-6 grid gap-3 rounded-xl border border-slate-700 bg-[#101b2b] p-4 md:grid-cols-3">
+                  <input
+                    value={historySearch}
+                    onChange={(event) => setHistorySearch(event.target.value)}
+                    placeholder="Buscar toma, nota o artista…"
+                    className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300"
+                  />
+                  <select value={historyDepartment} onChange={(event) => setHistoryDepartment(event.target.value as "all" | Department)} className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-slate-200">
+                    <option value="all">Todas las áreas</option>
+                    {(Object.keys(departmentLabel) as Department[]).map((department) => <option key={department} value={department}>{departmentLabel[department]}</option>)}
+                  </select>
+                  <select value={historyArtist} onChange={(event) => setHistoryArtist(event.target.value)} className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-slate-200">
+                    <option value="all">Todo el equipo</option>
+                    {activeMembers.filter((member) => member.role === "artist").map((member) => <option key={member.uid} value={member.uid}>{member.display_name ?? member.email ?? member.uid}</option>)}
+                  </select>
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <TicketColumn
+                    title={`Completadas (${filteredCompleted.length})`}
+                    description="Entregables aprobados por control de calidad"
+                    tickets={filteredCompleted}
+                    loading={loading}
+                  >
+                    {(ticket) => <TicketCard key={ticket.id} ticket={ticket} onViewActivity={(item) => void openTicketActivity(item)} />}
+                  </TicketColumn>
+                  <TicketColumn
+                    title={`Rechazadas (${filteredRejected.length})`}
+                    description="Notas que no avanzaron a producción"
+                    tickets={filteredRejected}
+                    loading={loading}
+                  >
+                    {(ticket) => <TicketCard key={ticket.id} ticket={ticket} onViewActivity={(item) => void openTicketActivity(item)} />}
+                  </TicketColumn>
+                </div>
               </section>
             )}
           </div>
