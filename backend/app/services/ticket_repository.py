@@ -51,6 +51,8 @@ class TicketDataRepository(Protocol):
 
     def clear_evidence(self, ticket_id: UUID, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
+    def clear_delivery_link(self, ticket_id: UUID, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
+
     def quality_review(self, ticket_id: UUID, review: TicketQualityReview, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket: ...
 
     def unassign_member_tasks(self, production_id: UUID, member_uid: str) -> int: ...
@@ -196,6 +198,18 @@ class TicketRepository:
         record.evidence_gcs_uri = None
         record.evidence_name = None
         record.evidence_content_type = None
+        record.updated_at = datetime.now(timezone.utc)
+        self._db.commit()
+        self._db.refresh(record)
+        return _record_to_ticket(record)
+
+    def clear_delivery_link(self, ticket_id: UUID, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
+        record: TicketRecord | None = self._db.get(TicketRecord, str(ticket_id))
+        if record is None or not self._can_access(record, owner_id, production_id):
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+        if TicketStatus(record.status) is not TicketStatus.IN_PROGRESS:
+            raise TicketTransitionError("Solo se puede quitar el enlace de una tarea en proceso.")
+        record.delivery_link = None
         record.updated_at = datetime.now(timezone.utc)
         self._db.commit()
         self._db.refresh(record)
@@ -419,6 +433,19 @@ class FirestoreTicketRepository:
             "evidence_content_type": None,
             "updated_at": datetime.now(timezone.utc),
         }
+        reference.update(changes)
+        data.update(changes)
+        return self._document_to_ticket(str(ticket_id), data)
+
+    def clear_delivery_link(self, ticket_id: UUID, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> Ticket:
+        reference = self._get_collection().document(str(ticket_id))  # type: ignore[union-attr]
+        snapshot = reference.get()
+        if not snapshot.exists or not self._can_access(snapshot.to_dict(), owner_id, production_id):
+            raise TicketNotFoundError(f"Ticket {ticket_id} not found")
+        data = snapshot.to_dict()
+        if TicketStatus(str(data["status"])) is not TicketStatus.IN_PROGRESS:
+            raise TicketTransitionError("Solo se puede quitar el enlace de una tarea en proceso.")
+        changes: dict[str, object] = {"delivery_link": None, "updated_at": datetime.now(timezone.utc)}
         reference.update(changes)
         data.update(changes)
         return self._document_to_ticket(str(ticket_id), data)

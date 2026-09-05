@@ -126,3 +126,19 @@ def test_evidence_can_only_attach_while_artist_is_working(db_session) -> None:
 
     assert without_evidence.evidence_gcs_uri is None
     assert without_evidence.evidence_name is None
+
+
+def test_artist_can_clear_delivery_link_while_working(db_session) -> None:
+    repository = TicketRepository(db_session)
+    created = repository.create(_ticket())
+    repository.review(created.id, TicketReview(decision=ReviewDecision.APPROVE))
+    repository.update_work(created.id, TicketWorkUpdate(status=ArtistWorkStatus.IN_PROGRESS))
+    with_link = repository.update_work(
+        created.id,
+        TicketWorkUpdate(status=ArtistWorkStatus.IN_PROGRESS, delivery_link="https://example.com/delivery"),
+    )
+
+    without_link = repository.clear_delivery_link(created.id)
+
+    assert with_link.delivery_link == "https://example.com/delivery"
+    assert without_link.delivery_link is None

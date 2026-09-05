@@ -274,6 +274,36 @@ async def remove_ticket_evidence(
         raise HTTPException(status_code=409, detail=str(error)) from error
 
 
+@router.delete("/{ticket_id}/delivery-link", response_model=Ticket)
+async def remove_ticket_delivery_link(
+    ticket_id: UUID,
+    repo: TicketDataRepository = Depends(_repo),
+    productions: ProductionDataRepository = Depends(_production_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
+    user: CurrentUser = Depends(get_current_user),
+    x_production_id: UUID | None = Header(default=None),
+) -> Ticket:
+    """Remove an artist delivery link before it is submitted to QC."""
+    _require_production_access(x_production_id, user, productions)
+    _require_role(x_production_id, user, productions, {ProductionRole.ARTIST})
+    current_ticket = next(
+        (ticket for ticket in repo.list(user.uid, x_production_id) if ticket.id == ticket_id and ticket.assigned_to_uid == user.uid),
+        None,
+    )
+    if current_ticket is None:
+        raise HTTPException(status_code=403, detail="Esta tarea no está asignada a tu usuario.")
+    if not current_ticket.delivery_link:
+        raise HTTPException(status_code=404, detail="Este ticket no tiene enlace de entrega.")
+    try:
+        ticket = repo.clear_delivery_link(ticket_id, user.uid, x_production_id)
+        activities.record(ticket.id, x_production_id, user.uid, user.name, "Enlace de entrega eliminado")
+        return ticket
+    except TicketNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
+    except TicketTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
 @router.get("/{ticket_id}/activity", response_model=list[TicketActivity])
 async def list_ticket_activity(
     ticket_id: UUID,
