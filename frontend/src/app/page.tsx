@@ -16,7 +16,7 @@ type TicketStatus =
   | "ready_for_qc"
   | "completed"
   | "rejected";
-type View = "decisions" | "production" | "history" | "team";
+type View = "decisions" | "production" | "history" | "team" | "dashboard";
 type WorkflowAction = "assign" | "send_qc" | "complete" | "return_for_rework";
 type Production = {
   id: string;
@@ -42,6 +42,15 @@ type AppNotification = {
   ticket_id?: string | null;
   created_at: string;
   read_at?: string | null;
+};
+type TicketActivity = {
+  id: string;
+  ticket_id: string;
+  actor_uid: string;
+  actor_name?: string | null;
+  action: string;
+  detail?: string | null;
+  created_at: string;
 };
 
 type Ticket = {
@@ -128,6 +137,18 @@ async function fetchNotifications(
   return response.json();
 }
 
+async function fetchTicketActivity(
+  headers: Record<string, string>,
+  productionId: string,
+  ticketId: string,
+): Promise<TicketActivity[]> {
+  const response = await fetch(`${apiBaseUrl}/tickets/${ticketId}/activity`, {
+    headers: { ...headers, "X-Production-Id": productionId },
+  });
+  if (!response.ok) throw new Error("No se pudo cargar la actividad de la tarea.");
+  return response.json();
+}
+
 async function fetchMembers(
   headers: Record<string, string>,
   productionId: string,
@@ -144,9 +165,11 @@ async function fetchMembers(
 function TicketCard({
   ticket,
   children,
+  onViewActivity,
 }: {
   ticket: Ticket;
   children?: React.ReactNode;
+  onViewActivity?: (ticket: Ticket) => void;
 }) {
   return (
     <article className="rounded-xl border border-slate-700 bg-[#162337] p-4 transition hover:border-slate-500">
@@ -194,6 +217,14 @@ function TicketCard({
           </span>
           {ticket.supervisor_feedback}
         </div>
+      )}
+      {onViewActivity && (
+        <button
+          onClick={() => onViewActivity(ticket)}
+          className="mt-3 text-xs font-semibold text-cyan-300 hover:underline"
+        >
+          Ver actividad
+        </button>
       )}
       {children && (
         <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-700 pt-3">
@@ -376,6 +407,9 @@ export default function Home() {
   const [memberToRemove, setMemberToRemove] = useState<ProductionMember | null>(
     null,
   );
+  const [activityTicket, setActivityTicket] = useState<Ticket | null>(null);
+  const [ticketActivity, setTicketActivity] = useState<TicketActivity[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
   const activeProductionId = production?.id;
 
   const loadTickets = useCallback(async () => {
@@ -521,6 +555,22 @@ export default function Home() {
       if (response.ok) setNotifications((current) => current.map((item) => ({ ...item, read_at: new Date().toISOString() })));
     } catch {
       // Retry on the next interaction or polling interval.
+    }
+  }
+
+  async function openTicketActivity(ticket: Ticket) {
+    if (!production) return;
+    setActivityTicket(ticket);
+    setActivityLoading(true);
+    setTicketActivity([]);
+    try {
+      setTicketActivity(
+        await fetchTicketActivity(await getAuthHeaders(), production.id, ticket.id),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo cargar la actividad.");
+    } finally {
+      setActivityLoading(false);
     }
   }
 
@@ -889,6 +939,36 @@ export default function Home() {
     () => tickets.filter((ticket) => ticket.status === "rejected"),
     [tickets],
   );
+  const activeWork = useMemo(
+    () =>
+      tickets.filter((ticket) =>
+        ["assigned", "approved", "in_progress", "ready_for_qc"].includes(
+          ticket.status,
+        ),
+      ),
+    [tickets],
+  );
+  const departmentMetrics = useMemo(
+    () =>
+      (Object.keys(departmentLabel) as Department[]).map((department) => {
+        const departmentTickets = tickets.filter(
+          (ticket) => ticket.department === department,
+        );
+        return {
+          department,
+          total: departmentTickets.length,
+          active: departmentTickets.filter((ticket) =>
+            ["assigned", "approved", "in_progress", "ready_for_qc"].includes(
+              ticket.status,
+            ),
+          ).length,
+          completed: departmentTickets.filter(
+            (ticket) => ticket.status === "completed",
+          ).length,
+        };
+      }),
+    [tickets],
+  );
   const activeMembers = useMemo(
     () =>
       members.filter(
@@ -1216,6 +1296,18 @@ export default function Home() {
               </select>
             </label>
             <nav className="space-y-1" aria-label="Vistas de FrameFlow">
+              {production.current_user_role === "producer" && (
+                <button
+                  onClick={() => setView("dashboard")}
+                  className={
+                    view === "dashboard"
+                      ? "w-full rounded-lg bg-cyan-300 px-3 py-2 text-left text-sm font-bold text-cyan-950"
+                      : "w-full rounded-lg px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+                  }
+                >
+                  ◫ Resumen
+                </button>
+              )}
               {canSupervise && (
                 <button
                   onClick={() => setView("decisions")}
@@ -1351,6 +1443,65 @@ export default function Home() {
                   </TicketColumn>
                 </section>
               </>
+            )}
+            {view === "dashboard" && production.current_user_role === "producer" && (
+              <section className="space-y-6">
+                <div>
+                  <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">
+                    PRODUCCIÓN / RESUMEN
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">
+                    Estado de {production.name}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Carga actual y progreso del equipo en tiempo real.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ["Total", tickets.length, "Todas las tareas"],
+                    ["Por revisar", pending.length, "Requieren decisión"],
+                    ["En curso", activeWork.length, "Asignadas, en proceso o QC"],
+                    ["Completadas", completed.length, "Aprobadas por QC"],
+                  ].map(([label, value, description]) => (
+                    <article key={label as string} className="rounded-xl border border-slate-700 bg-[#101b2b] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+                      <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
+                      <p className="mt-1 text-xs text-slate-500">{description}</p>
+                    </article>
+                  ))}
+                </div>
+                <section className="rounded-2xl border border-slate-700/70 bg-[#101b2b] p-5">
+                  <h3 className="font-semibold text-white">Progreso por área</h3>
+                  <div className="mt-5 space-y-5">
+                    {departmentMetrics.map((metric) => {
+                      const completion = metric.total ? Math.round((metric.completed / metric.total) * 100) : 0;
+                      return (
+                        <div key={metric.department}>
+                          <div className="flex justify-between gap-4 text-sm">
+                            <p className="font-medium text-slate-200">{departmentLabel[metric.department]}</p>
+                            <p className="text-slate-400">{metric.completed}/{metric.total} completadas · {metric.active} activas</p>
+                          </div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+                            <div className="h-full rounded-full bg-cyan-300 transition-all" style={{ width: `${completion}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+                <section className="rounded-2xl border border-slate-700/70 bg-[#101b2b] p-5">
+                  <h3 className="font-semibold text-white">Carga por artista</h3>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {activeMembers.filter((member) => member.role === "artist").length === 0 ? (
+                      <p className="text-sm text-slate-500">Aún no hay artistas activos en esta producción.</p>
+                    ) : activeMembers.filter((member) => member.role === "artist").map((member) => {
+                      const assigned = activeWork.filter((ticket) => ticket.assigned_to_uid === member.uid).length;
+                      return <article key={member.uid} className="rounded-lg border border-slate-700 bg-[#162337] px-4 py-3"><p className="font-medium text-slate-100">{member.display_name ?? member.email ?? member.uid}</p><p className="mt-1 text-xs text-slate-400">{member.department ? departmentLabel[member.department] : "Sin área"} · {assigned} tareas activas</p></article>;
+                    })}
+                  </div>
+                </section>
+              </section>
             )}
             {view === "production" && (
               <>
@@ -1656,7 +1807,7 @@ export default function Home() {
                   tickets={completed}
                   loading={loading}
                 >
-                  {(ticket) => <TicketCard key={ticket.id} ticket={ticket} />}
+                  {(ticket) => <TicketCard key={ticket.id} ticket={ticket} onViewActivity={(item) => void openTicketActivity(item)} />}
                 </TicketColumn>
                 <TicketColumn
                   title="Rechazadas"
@@ -1664,7 +1815,7 @@ export default function Home() {
                   tickets={rejected}
                   loading={loading}
                 >
-                  {(ticket) => <TicketCard key={ticket.id} ticket={ticket} />}
+                  {(ticket) => <TicketCard key={ticket.id} ticket={ticket} onViewActivity={(item) => void openTicketActivity(item)} />}
                 </TicketColumn>
               </section>
             )}
@@ -1842,6 +1993,41 @@ export default function Home() {
                           ? "Completar"
                           : "Devolver tarea"}
                 </button>
+              </div>
+            </section>
+          </div>
+        )}
+        {activityTicket && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/75 p-4">
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="activity-dialog-title"
+              className="w-full max-w-lg rounded-2xl border border-slate-700 bg-[#101b2b] p-6 shadow-2xl"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">FRAMEFLOW / HISTORIAL</p>
+                  <h2 id="activity-dialog-title" className="mt-2 text-xl font-semibold text-white">
+                    Actividad · {activityTicket.shot_id}
+                  </h2>
+                </div>
+                <button onClick={() => setActivityTicket(null)} className="text-sm text-slate-400 hover:text-white">Cerrar</button>
+              </div>
+              <div className="mt-5 max-h-[55vh] space-y-4 overflow-y-auto pr-2">
+                {activityLoading ? (
+                  <p className="text-sm text-slate-400">Cargando actividad…</p>
+                ) : ticketActivity.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-500">Esta tarea fue creada antes del historial detallado.</p>
+                ) : ticketActivity.map((item) => (
+                  <article key={item.id} className="border-l-2 border-cyan-400/50 pl-4">
+                    <p className="text-sm font-semibold text-white">{item.action}</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {item.actor_name ?? item.actor_uid} · {new Date(item.created_at).toLocaleString()}
+                    </p>
+                    {item.detail && <p className="mt-2 text-sm leading-6 text-slate-300">{item.detail}</p>}
+                  </article>
+                ))}
               </div>
             </section>
           </div>

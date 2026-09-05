@@ -56,6 +56,7 @@ from app.services.ticket_repository import TicketDataRepository, create_ticket_r
 from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, create_production_repository
 from app.models.production import ProductionRole
 from app.services.video_storage import StorageConfigurationError, video_storage
+from app.services.ticket_activity_repository import TicketActivityDataRepository, create_ticket_activity_repository
 
 _log = logging.getLogger(__name__)
 
@@ -73,6 +74,10 @@ def _production_repo(db: Session | None = Depends(get_db)) -> ProductionDataRepo
     return create_production_repository(db)
 
 
+def _activity_repo(db: Session | None = Depends(get_db)) -> TicketActivityDataRepository:
+    return create_ticket_activity_repository(db)
+
+
 def _media_type(request: Request) -> str:
     """Return the bare media type without charset/boundary parameters."""
     ct = request.headers.get("content-type", "")
@@ -88,6 +93,7 @@ async def ingest_director_note(
     request: Request,
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> JSONResponse:
@@ -329,6 +335,7 @@ async def ingest_director_note(
         except ProductionNotFoundError as exc:
             raise HTTPException(status_code=404, detail="Producción no encontrada o sin acceso.") from exc
     ticket = repo.create(result, user.uid, x_production_id)
+    activities.record(ticket.id, x_production_id, user.uid, user.name, "Ticket creado con Gemini", "La nota del director fue analizada y enviada a revisión.")
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=Ticket.model_validate(ticket).model_dump(mode="json"),

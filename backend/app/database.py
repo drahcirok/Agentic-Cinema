@@ -87,6 +87,7 @@ def init_db() -> None:
     import app.models.ticket_record  # noqa: F401
     import app.models.production_record  # noqa: F401
     import app.models.notification_record  # noqa: F401
+    import app.models.ticket_activity_record  # noqa: F401
 
     assert engine is not None
     Base.metadata.create_all(bind=engine)

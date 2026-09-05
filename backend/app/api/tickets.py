@@ -21,6 +21,8 @@ from app.models.ticket import QualityDecision, ReviewDecision
 from app.services.video_storage import StorageConfigurationError, video_storage
 from app.models.notification import NotificationType
 from app.services.notification_repository import NotificationDataRepository, create_notification_repository
+from app.models.ticket_activity import TicketActivity
+from app.services.ticket_activity_repository import TicketActivityDataRepository, create_ticket_activity_repository
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -35,6 +37,10 @@ def _production_repo(db: Session | None = Depends(get_db)) -> ProductionDataRepo
 
 def _notification_repo(db: Session | None = Depends(get_db)) -> NotificationDataRepository:
     return create_notification_repository(db)
+
+
+def _activity_repo(db: Session | None = Depends(get_db)) -> TicketActivityDataRepository:
+    return create_ticket_activity_repository(db)
 
 
 def _require_production_access(production_id: UUID | None, user: CurrentUser, productions: ProductionDataRepository) -> None:
@@ -76,13 +82,16 @@ async def create_ticket(
     payload: TicketCreate,
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
     """Crea un ticket que queda pendiente de aprobación humana."""
     _require_production_access(x_production_id, user, productions)
     _require_role(x_production_id, user, productions, {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR})
-    return repo.create(payload, user.uid, x_production_id)
+    ticket = repo.create(payload, user.uid, x_production_id)
+    activities.record(ticket.id, x_production_id, user.uid, user.name, "Ticket creado", "Creado manualmente para revisión.")
+    return ticket
 
 
 @router.get("", response_model=list[Ticket])
@@ -105,6 +114,7 @@ async def review_ticket(
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
     notifications: NotificationDataRepository = Depends(_notification_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -116,6 +126,11 @@ async def review_ticket(
         ticket = repo.review(ticket_id, review, user.uid, x_production_id)
         if review.decision is ReviewDecision.APPROVE and ticket.assigned_to_uid:
             notifications.create(ticket.assigned_to_uid, NotificationType.TASK_ASSIGNED, "Nueva tarea asignada", f"{ticket.shot_id}: tienes una tarea de {ticket.department.upper()} asignada.", x_production_id, ticket.id)
+            activities.record(ticket.id, x_production_id, user.uid, user.name, "Tarea asignada", f"Asignada a {ticket.assigned_to_name or ticket.assigned_to_uid}.")
+        elif review.decision is ReviewDecision.REJECT:
+            activities.record(ticket.id, x_production_id, user.uid, user.name, "Ticket rechazado", review.supervisor_note)
+        else:
+            activities.record(ticket.id, x_production_id, user.uid, user.name, "Ticket enviado a edición", review.supervisor_note)
         return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
@@ -128,6 +143,7 @@ async def update_artist_work(
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
     notifications: NotificationDataRepository = Depends(_notification_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -143,6 +159,9 @@ async def update_artist_work(
             for member in productions.list_members(x_production_id, user.uid):
                 if member.role in {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR}:
                     notifications.create(member.uid, NotificationType.QC_READY, "Entrega lista para QC", f"{ticket.shot_id} fue enviada a control de calidad.", x_production_id, ticket.id)
+            activities.record(ticket.id, x_production_id, user.uid, user.name, "Entrega enviada a QC", update.artist_note)
+        elif update.status is not None:
+            activities.record(ticket.id, x_production_id, user.uid, user.name, "Trabajo iniciado")
         return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
@@ -157,6 +176,7 @@ async def quality_review_ticket(
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
     notifications: NotificationDataRepository = Depends(_notification_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -169,6 +189,7 @@ async def quality_review_ticket(
             kind = NotificationType.QC_COMPLETED if review.decision is QualityDecision.APPROVE else NotificationType.QC_RETURNED
             title = "Tarea aprobada en QC" if review.decision is QualityDecision.APPROVE else "Tarea devuelta para corrección"
             notifications.create(ticket.assigned_to_uid, kind, title, f"{ticket.shot_id}: {review.supervisor_feedback or 'Revisa el estado de tu tarea.'}", x_production_id, ticket.id)
+        activities.record(ticket.id, x_production_id, user.uid, user.name, "QC aprobado" if review.decision is QualityDecision.APPROVE else "Devuelta para corrección", review.supervisor_feedback)
         return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
@@ -182,6 +203,7 @@ async def upload_ticket_evidence(
     evidence: UploadFile = File(...),
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -197,7 +219,7 @@ async def upload_ticket_evidence(
     data = await evidence.read()
     try:
         gs_uri = video_storage.upload_evidence(data, content_type, extension)
-        return repo.attach_evidence(
+        ticket = repo.attach_evidence(
             ticket_id,
             gs_uri,
             Path(evidence.filename or "evidencia").name[:255],
@@ -205,6 +227,8 @@ async def upload_ticket_evidence(
             user.uid,
             x_production_id,
         )
+        activities.record(ticket.id, x_production_id, user.uid, user.name, "Evidencia adjuntada", ticket.evidence_name)
+        return ticket
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except StorageConfigurationError as error:
@@ -213,6 +237,24 @@ async def upload_ticket_evidence(
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
     except TicketTransitionError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/{ticket_id}/activity", response_model=list[TicketActivity])
+async def list_ticket_activity(
+    ticket_id: UUID,
+    repo: TicketDataRepository = Depends(_repo),
+    productions: ProductionDataRepository = Depends(_production_repo),
+    activities: TicketActivityDataRepository = Depends(_activity_repo),
+    user: CurrentUser = Depends(get_current_user),
+    x_production_id: UUID | None = Header(default=None),
+) -> list[TicketActivity]:
+    """Return the private audit timeline only to people allowed to see the ticket."""
+    _require_production_access(x_production_id, user, productions)
+    role = _role_for(x_production_id, user, productions)
+    ticket = next((item for item in repo.list(user.uid, x_production_id) if item.id == ticket_id), None)
+    if ticket is None or (role is ProductionRole.ARTIST and ticket.assigned_to_uid != user.uid):
+        raise HTTPException(status_code=404, detail="Ticket no encontrado")
+    return activities.list_for_ticket(ticket_id, x_production_id)
 
 
 @router.get("/{ticket_id}/evidence")
