@@ -50,7 +50,6 @@ class FakeCollection:
         return self
 
     def where(self, field: str, operator: str, value: object) -> "FakeCollection":
-        assert field == "owner_id"
         assert operator == "=="
         filtered = FakeCollection()
         filtered.documents = {
@@ -160,3 +159,13 @@ def test_tickets_are_scoped_to_their_owner(repository: FirestoreTicketRepository
     assert [ticket.id for ticket in repository.list(owner_id="alice")] == [alice_ticket.id]
     with pytest.raises(TicketNotFoundError):
         repository.review(alice_ticket.id, TicketReview(decision=ReviewDecision.APPROVE), owner_id="bob")
+
+
+def test_tickets_are_strictly_scoped_to_the_active_production(repository: FirestoreTicketRepository) -> None:
+    production_id = uuid4()
+    other_production_id = uuid4()
+    visible = repository.create(_payload("AURORA-001"), owner_id="producer", production_id=production_id)
+    repository.create(_payload("OTHER-001"), owner_id="producer", production_id=other_production_id)
+    repository.create(_payload("LEGACY-001"), owner_id="producer")
+
+    assert [ticket.id for ticket in repository.list(owner_id="producer", production_id=production_id)] == [visible.id]

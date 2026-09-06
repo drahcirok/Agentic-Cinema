@@ -11,7 +11,6 @@ from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
 from app.core.config import settings
 from app.models.ticket import (
@@ -261,17 +260,21 @@ class TicketRepository:
     def list(self, owner_id: str = "local-supervisor", production_id: UUID | None = None) -> list[Ticket]:
         """Return all tickets ordered by creation date descending."""
         query = self._db.query(TicketRecord)
-        query = query.filter(or_(TicketRecord.production_id == str(production_id), (TicketRecord.production_id.is_(None) & (TicketRecord.owner_id == owner_id)))) if production_id else query.filter(TicketRecord.owner_id == owner_id)
+        query = (
+            query.filter(TicketRecord.production_id == str(production_id))
+            if production_id
+            else query.filter(
+                TicketRecord.production_id.is_(None), TicketRecord.owner_id == owner_id
+            )
+        )
         records = query.order_by(TicketRecord.created_at.desc()).all()
         return [_record_to_ticket(r) for r in records]
 
     @staticmethod
     def _can_access(record: TicketRecord, owner_id: str, production_id: UUID | None) -> bool:
-        """Permit legacy private tickets only to their original owner."""
+        """Scope production work strictly; legacy tickets remain private."""
         if production_id:
-            return record.production_id == str(production_id) or (
-                record.production_id is None and record.owner_id == owner_id
-            )
+            return record.production_id == str(production_id)
         return record.production_id is None and record.owner_id == owner_id
 
 
@@ -496,7 +499,7 @@ class FirestoreTicketRepository:
         # first deployment. The collection is per-user and small in this demo.
         collection = self._get_collection()
         if production_id:
-            documents = list(collection.where("production_id", "==", str(production_id)).stream()) + list(collection.where("owner_id", "==", owner_id).stream())  # type: ignore[union-attr]
+            documents = collection.where("production_id", "==", str(production_id)).stream()  # type: ignore[union-attr]
         else:
             documents = collection.where("owner_id", "==", owner_id).stream()  # type: ignore[union-attr]
         tickets = [
@@ -510,7 +513,7 @@ class FirestoreTicketRepository:
     def _can_access(data: dict[str, object], owner_id: str, production_id: UUID | None) -> bool:
         value = data.get("production_id")
         if production_id:
-            return value == str(production_id) or (value is None and data.get("owner_id") == owner_id)
+            return value == str(production_id)
         return value is None and data.get("owner_id") == owner_id
 
 

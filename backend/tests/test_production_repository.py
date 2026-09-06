@@ -63,11 +63,21 @@ def test_only_producer_can_manage_members(repository: ProductionRepository) -> N
 
 def test_tickets_can_be_scoped_to_a_production(repository: ProductionRepository) -> None:
     production = repository.create(ProductionCreate(name="Corto Nebula"), "producer")
+    other_production = repository.create(ProductionCreate(name="Corto Aurora"), "producer")
     ticket_repo = TicketRepository(repository._db)
     ticket = ticket_repo.create(
         TicketCreate(shot_id="TEAM-001", director_note="Eliminar el boom.", department=Department.VFX, priority=Priority.HIGH),
         owner_id="producer",
         production_id=production.id,
+    )
+    ticket_repo.create(
+        TicketCreate(shot_id="TEAM-002", director_note="Mezclar diálogo.", department=Department.SOUND, priority=Priority.MEDIUM),
+        owner_id="producer",
+        production_id=other_production.id,
+    )
+    ticket_repo.create(
+        TicketCreate(shot_id="LEGACY-001", director_note="Ticket anterior.", department=Department.VFX, priority=Priority.LOW),
+        owner_id="producer",
     )
 
     assert ticket.production_id == production.id
