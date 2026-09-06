@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FrameFlow | Sala de decisiones",
-  description: "Gestión de activos de postproducción y VFX.",
+  title: "FrameFlow | Postproducción bajo control",
+  description:
+    "Convierte notas del director en tareas trazables para productores, supervisores y artistas de postproducción.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

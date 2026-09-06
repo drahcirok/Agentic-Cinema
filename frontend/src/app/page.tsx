@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import DirectorNoteForm from "@/components/director-note-form";
 import EditTicketDialog from "@/components/edit-ticket-dialog";
+import LandingPage from "@/components/landing-page";
 
 type Department = "vfx" | "color" | "sound" | "editorial";
 type Priority = "low" | "medium" | "high" | "critical";
@@ -1094,28 +1095,7 @@ export default function Home() {
       </main>
     );
   if (!user)
-    return (
-      <main className="grid min-h-screen place-items-center bg-[#09111d] p-6 text-slate-100">
-        <section className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#101b2b] p-8 text-center">
-          <p className="text-xs font-bold tracking-[0.22em] text-cyan-300">
-            FRAMEFLOW / ACCESS CONTROL
-          </p>
-          <h1 className="mt-4 text-3xl font-semibold text-white">
-            Sala de decisiones privada
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-slate-400">
-            Inicia sesión con tu cuenta de Google para ver y gestionar
-            únicamente los tickets de tu producción.
-          </p>
-          <button
-            onClick={() => void signIn()}
-            className="mt-6 rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950"
-          >
-            Continuar con Google
-          </button>
-        </section>
-      </main>
-    );
+    return <LandingPage onSignIn={signIn} />;
 
   if (!production)
     return (
