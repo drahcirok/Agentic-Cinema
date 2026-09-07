@@ -1,11 +1,25 @@
 "use client";
 
+import {
+  ArrowLeft,
+  Bell,
+  History,
+  LayoutDashboard,
+  ListChecks,
+  RefreshCw,
+  Sparkles,
+  UsersRound,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import DirectorNoteForm from "@/components/director-note-form";
 import EditTicketDialog from "@/components/edit-ticket-dialog";
 import LandingPage from "@/components/landing-page";
+import MemberSearch from "@/components/member-search";
+import ProfileMenu from "@/components/profile-menu";
+import UserAvatar from "@/components/user-avatar";
+import type { UserProfile } from "@/lib/profile-types";
 
 type Department = "vfx" | "color" | "sound" | "editorial";
 type Priority = "low" | "medium" | "high" | "critical";
@@ -31,7 +45,10 @@ type ProductionMember = {
   role: "producer" | "supervisor" | "artist";
   department?: Department | null;
   display_name?: string | null;
-  email?: string | null;
+  username?: string | null;
+  photo_url?: string | null;
+  has_custom_avatar?: boolean;
+  profile_updated_at?: string | null;
   membership_status?: "pending" | "accepted" | "declined";
 };
 type AppNotification = {
@@ -99,6 +116,20 @@ const statusLabel: Record<TicketStatus, string> = {
   rejected: "Rechazada",
 };
 
+function memberDisplayName(member: ProductionMember): string {
+  return member.display_name ?? member.username ?? member.uid;
+}
+
+function memberAvatarProfile(member: ProductionMember) {
+  return {
+    uid: member.uid,
+    display_name: memberDisplayName(member),
+    photo_url: member.photo_url,
+    has_custom_avatar: Boolean(member.has_custom_avatar),
+    updated_at: member.profile_updated_at ?? undefined,
+  };
+}
+
 async function fetchTickets(
   headers: Record<string, string>,
   productionId?: string,
@@ -163,6 +194,14 @@ async function fetchMembers(
   return response.json();
 }
 
+async function fetchCurrentProfile(
+  headers: Record<string, string>,
+): Promise<UserProfile> {
+  const response = await fetch(`${apiBaseUrl}/profiles/me`, { headers });
+  if (!response.ok) throw new Error("No se pudo cargar tu perfil.");
+  return response.json();
+}
+
 function TicketCard({
   ticket,
   children,
@@ -177,7 +216,7 @@ function TicketCard({
   onRemoveDeliveryLink?: (ticket: Ticket) => void;
 }) {
   return (
-    <article className="min-w-0 rounded-xl border border-slate-700 bg-[#162337] p-4 transition hover:border-slate-500">
+    <article className="workspace-ticket min-w-0 rounded-2xl border border-slate-700 bg-[#162337]/95 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <span className="font-mono text-xs text-cyan-300">
           {ticket.shot_id}
@@ -301,7 +340,7 @@ function TicketColumn({
   children: (ticket: Ticket) => React.ReactNode;
 }) {
   return (
-    <section className="min-w-0 rounded-2xl border border-slate-700/70 bg-[#101b2b] p-4 shadow-2xl shadow-black/10">
+    <section className="workspace-panel min-w-0 rounded-3xl border border-slate-700/70 bg-[#101b2b]/90 p-4 shadow-2xl shadow-black/10 backdrop-blur">
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-semibold text-white">{title}</h2>
@@ -312,11 +351,9 @@ function TicketColumn({
         </span>
       </div>
       <div className="max-h-[42rem] space-y-3 overflow-y-auto pr-1">
-        {loading && (
-          <p className="rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-500">
-            Cargando tickets…
-          </p>
-        )}
+        {loading && [0, 1].map((item) => (
+          <div key={item} className="workspace-skeleton h-32 rounded-2xl border border-slate-700/60" />
+        ))}
         {!loading && tickets.length === 0 && (
           <p className="rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-500">
             Sin tickets en esta columna.
@@ -343,13 +380,15 @@ function NotificationBell({
 }) {
   const unread = notifications.filter((item) => !item.read_at).length;
   return (
-    <div className="relative">
+    <div className="relative z-40" onKeyDown={(event) => { if (event.key === "Escape" && open) onToggle(); }}>
       <button
         onClick={onToggle}
         aria-label="Ver notificaciones"
-        className="relative grid h-10 w-10 place-items-center rounded-lg border border-slate-600 text-lg text-slate-200 hover:border-cyan-300 hover:text-cyan-300"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="group relative grid h-11 w-11 place-items-center rounded-full border border-slate-700/70 bg-slate-950/45 text-slate-300 shadow-lg backdrop-blur transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:text-cyan-200"
       >
-        🔔
+        <Bell className="h-4 w-4 transition group-hover:rotate-12" />
         {unread > 0 && (
           <span className="absolute -right-2 -top-2 grid min-h-5 min-w-5 place-items-center rounded-full bg-cyan-300 px-1 text-[10px] font-bold text-cyan-950">
             {unread > 9 ? "9+" : unread}
@@ -357,7 +396,9 @@ function NotificationBell({
         )}
       </button>
       {open && (
-        <section className="absolute right-0 z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-700 bg-[#101b2b] shadow-2xl">
+        <>
+        <button type="button" aria-label="Cerrar notificaciones" className="fixed inset-0 z-[-1] cursor-default" onClick={onToggle} />
+        <section role="dialog" aria-label="Notificaciones" className="absolute right-0 z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-700 bg-[#101b2b] shadow-2xl landing-rise">
           <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
             <p className="text-sm font-semibold text-white">Notificaciones</p>
             {unread > 0 && (
@@ -381,12 +422,13 @@ function NotificationBell({
             ))}
           </div>
         </section>
+        </>
       )}
     </div>
   );
 }
 
-export default function Home() {
+function Workspace() {
   const {
     user,
     loading: authLoading,
@@ -421,9 +463,9 @@ export default function Home() {
   >(null);
   const [renameName, setRenameName] = useState("");
   const [members, setMembers] = useState<ProductionMember[]>([]);
+  const [currentProfile, setCurrentProfile] = useState<UserProfile | null>(null);
   const [assignedArtistId, setAssignedArtistId] = useState("");
-  const [memberUid, setMemberUid] = useState("");
-  const [memberName, setMemberName] = useState("");
+  const [selectedMember, setSelectedMember] = useState<UserProfile | null>(null);
   const [memberRole, setMemberRole] = useState<"supervisor" | "artist">(
     "artist",
   );
@@ -439,6 +481,22 @@ export default function Home() {
   const [historyDepartment, setHistoryDepartment] = useState<"all" | Department>("all");
   const [historyArtist, setHistoryArtist] = useState("all");
   const activeProductionId = production?.id;
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    void (async () => {
+      try {
+        const profile = await fetchCurrentProfile(await getAuthHeaders());
+        if (active) setCurrentProfile(profile);
+      } catch {
+        // The workspace remains usable with the verified Firebase identity.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [getAuthHeaders, user]);
 
   const loadTickets = useCallback(async () => {
     setLoading(true);
@@ -658,7 +716,10 @@ export default function Home() {
 
   async function addMember(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!production) return;
+    if (!production || !selectedMember) {
+      setError("Selecciona una persona de los resultados antes de continuar.");
+      return;
+    }
     setError(null);
     try {
       const response = await fetch(
@@ -670,8 +731,7 @@ export default function Home() {
             ...(await getAuthHeaders()),
           },
           body: JSON.stringify({
-            uid: memberUid.trim(),
-            display_name: memberName.trim() || null,
+            uid: selectedMember.uid,
             role: memberRole,
             department: memberRole === "artist" ? memberDepartment : null,
           }),
@@ -684,8 +744,7 @@ export default function Home() {
         ...current.filter((member) => member.uid !== created.uid),
         created as ProductionMember,
       ]);
-      setMemberUid("");
-      setMemberName("");
+      setSelectedMember(null);
       setMemberRole("artist");
       setMemberDepartment("vfx");
       setEditingMemberUid(null);
@@ -700,8 +759,15 @@ export default function Home() {
 
   function editMember(member: ProductionMember) {
     setEditingMemberUid(member.uid);
-    setMemberUid(member.uid);
-    setMemberName(member.display_name ?? "");
+    setSelectedMember({
+      uid: member.uid,
+      username: member.username ?? member.uid.slice(0, 12),
+      display_name: member.display_name ?? "Integrante de FrameFlow",
+      photo_url: member.photo_url,
+      has_custom_avatar: Boolean(member.has_custom_avatar),
+      created_at: "",
+      updated_at: member.profile_updated_at ?? "",
+    });
     setMemberRole(member.role === "supervisor" ? "supervisor" : "artist");
     setMemberDepartment(member.department ?? "vfx");
   }
@@ -968,7 +1034,7 @@ export default function Home() {
             decision: "approve",
             assigned_to_uid: assignedArtistId,
             assigned_to_name:
-              artist?.display_name ?? artist?.email ?? "Artista",
+              artist ? memberDisplayName(artist) : "Artista",
           })
         : type === "send_qc"
           ? await updateTicket(ticket.id, "work", {
@@ -1097,10 +1163,56 @@ export default function Home() {
   if (!user)
     return <LandingPage onSignIn={signIn} />;
 
+  const profile: UserProfile = currentProfile ?? {
+    uid: user.uid,
+    username:
+      user.email
+        ?.split("@", 1)[0]
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]/g, "-") || `user-${user.uid.slice(-6).toLowerCase()}`,
+    display_name: user.displayName ?? user.email?.split("@", 1)[0] ?? "Usuario de FrameFlow",
+    photo_url: user.photoURL,
+    has_custom_avatar: false,
+    created_at: "",
+    updated_at: "",
+  };
+  const workspaceCopy: Record<View, { eyebrow: string; title: string; description: string }> = {
+    dashboard: {
+      eyebrow: "PRODUCCIÓN / PULSO EN VIVO",
+      title: "Resumen de producción",
+      description: "El avance del equipo, las cargas y los cuellos de botella en una sola mirada.",
+    },
+    decisions: {
+      eyebrow: "FRAMEFLOW / CONTROL CREATIVO",
+      title: "Sala de decisiones",
+      description: "Del análisis con Gemini a una decisión humana clara y asignable.",
+    },
+    production: {
+      eyebrow: "PRODUCCIÓN / EJECUCIÓN",
+      title: canWork ? "Mi espacio de trabajo" : "Área de producción",
+      description: canWork
+        ? "Tus tareas, entregables y revisiones sin ruido operativo."
+        : "Sigue el trabajo creativo desde la asignación hasta control de calidad.",
+    },
+    team: {
+      eyebrow: "PRODUCCIÓN / PERSONAS",
+      title: "Equipo de producción",
+      description: "Invita identidades verificadas y define cómo participa cada persona.",
+    },
+    history: {
+      eyebrow: "PRODUCCIÓN / TRAZABILIDAD",
+      title: "Historial de entregas",
+      description: "Cada cierre, rechazo y decisión conserva su contexto.",
+    },
+  };
+
   if (!production)
     return (
-      <main className="min-h-screen bg-[#09111d] px-5 py-8 text-slate-100 sm:px-8 lg:px-12">
-        <section className="mx-auto max-w-6xl">
+      <main className="workspace-shell relative min-h-screen overflow-x-clip bg-[#09111d] px-5 py-8 text-slate-100 sm:px-8 lg:px-12">
+        <div className="workspace-grid pointer-events-none absolute inset-0" />
+        <div className="workspace-orb workspace-orb-one pointer-events-none absolute" />
+        <div className="workspace-orb workspace-orb-two pointer-events-none absolute" />
+        <section className="relative mx-auto max-w-6xl">
           <header className="mb-8 flex flex-wrap items-end justify-between gap-5 border-b border-slate-700/70 pb-7">
             <div>
               <p className="mb-3 text-xs font-bold tracking-[0.22em] text-cyan-300">
@@ -1114,8 +1226,9 @@ export default function Home() {
                 sala de postproducción.
               </p>
               <p className="mt-3 text-xs text-slate-500">
-                Tu UID para invitaciones:{" "}
-                <span className="font-mono text-cyan-300">{user.uid}</span>
+                Tu identidad:{" "}
+                <span className="font-semibold text-cyan-300">@{profile.username}</span>
+                <span className="ml-2">· el UID se copia desde tu perfil</span>
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -1126,15 +1239,7 @@ export default function Home() {
                 onRead={(notification) => void openNotification(notification)}
                 onReadAll={() => void markAllNotificationsRead()}
               />
-              <div className="text-right text-xs text-slate-400">
-                <p>{user.displayName ?? user.email}</p>
-                <button
-                  onClick={() => void signOut()}
-                  className="mt-1 text-cyan-300 hover:underline"
-                >
-                  Cerrar sesión
-                </button>
-              </div>
+              <ProfileMenu profile={profile} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} onProfileChange={setCurrentProfile} onSignOut={signOut} />
             </div>
           </header>
           {error && (
@@ -1142,7 +1247,7 @@ export default function Home() {
               {error}
             </div>
           )}
-          <section className="mb-8 rounded-2xl border border-cyan-400/20 bg-[#101b2b] p-5">
+          <section className="workspace-panel mb-8 rounded-2xl border border-cyan-400/20 bg-[#101b2b]/90 p-5 backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="font-semibold text-white">Crear producción</h2>
@@ -1182,7 +1287,7 @@ export default function Home() {
                 {invitations.map((invitation) => (
                   <article
                     key={invitation.production_id}
-                    className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-5"
+                    className="workspace-card rounded-xl border border-amber-400/30 bg-amber-400/5 p-5"
                   >
                     <p className="font-semibold text-white">
                       {invitation.production_name ?? "Producción compartida"}
@@ -1232,14 +1337,14 @@ export default function Home() {
                 {productions.map((item) => (
                   <article
                     key={item.id}
-                    className="rounded-xl border border-slate-700 bg-[#101b2b] p-5"
+                    className="workspace-card group rounded-2xl border border-slate-700 bg-[#101b2b]/90 p-5 backdrop-blur"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <button
                         onClick={() => void openProduction(item)}
-                        className="text-left"
+                        className="min-w-0 flex-1 text-left"
                       >
-                        <p className="font-semibold text-white hover:text-cyan-300">
+                        <p className="font-semibold text-white transition group-hover:text-cyan-300">
                           {item.name}
                         </p>
                         <p className="mt-1 text-sm capitalize text-slate-400">
@@ -1298,19 +1403,21 @@ export default function Home() {
     );
 
   return (
-    <main className="min-h-screen bg-[#09111d] px-4 py-5 text-slate-100 sm:px-8 sm:py-8 lg:px-12">
-      <section className="mx-auto max-w-7xl">
+    <main className="workspace-shell relative min-h-screen overflow-x-clip bg-[#09111d] px-4 py-5 text-slate-100 sm:px-8 sm:py-8 lg:px-12">
+      <div className="workspace-grid pointer-events-none absolute inset-0" />
+      <div className="workspace-orb workspace-orb-one pointer-events-none absolute" />
+      <div className="workspace-orb workspace-orb-two pointer-events-none absolute" />
+      <section className="relative mx-auto max-w-7xl">
         <header className="mb-7 flex flex-col justify-between gap-6 border-b border-slate-700/70 pb-7 md:flex-row md:items-end">
-          <div>
+          <div key={`header:${view}`} className="workspace-view">
             <p className="mb-3 text-xs font-bold tracking-[0.22em] text-cyan-300">
-              FRAMEFLOW / POST-PRODUCTION CONTROL
+              {workspaceCopy[view].eyebrow}
             </p>
             <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-              Sala de decisiones
+              {workspaceCopy[view].title}
             </h1>
             <p className="mt-3 max-w-xl text-slate-400">
-              Del análisis con Gemini al control de calidad del equipo de
-              postproducción.
+              {workspaceCopy[view].description}
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3 sm:gap-4">
@@ -1321,16 +1428,8 @@ export default function Home() {
               onRead={(notification) => void openNotification(notification)}
               onReadAll={() => void markAllNotificationsRead()}
             />
-            <div className="max-w-36 text-right text-xs text-slate-400 sm:max-w-48">
-              <p className="truncate">{user.displayName ?? user.email}</p>
-              <button
-                onClick={() => void signOut()}
-                className="mt-1 text-cyan-300 hover:underline"
-              >
-                Cerrar sesión
-              </button>
-            </div>
-            <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-5 py-3">
+            <ProfileMenu profile={profile} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} onProfileChange={setCurrentProfile} onSignOut={signOut} />
+            <div className="workspace-metric rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-5 py-3 backdrop-blur">
               <p className="text-xs font-medium uppercase tracking-wider text-cyan-200">
                 Por revisar
               </p>
@@ -1340,16 +1439,16 @@ export default function Home() {
             </div>
           </div>
         </header>
-        <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <aside className="h-fit rounded-2xl border border-slate-700/70 bg-[#101b2b] p-3">
+        <div className="grid gap-6 lg:grid-cols-[238px_minmax(0,1fr)]">
+          <aside className="workspace-sidebar h-fit rounded-3xl border border-slate-700/70 bg-[#101b2b]/88 p-3 backdrop-blur-xl lg:sticky lg:top-6">
             <button
               onClick={() => {
                 window.localStorage.removeItem(activeProductionStorageKey);
                 setProduction(null);
               }}
-              className="mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-cyan-300 hover:bg-cyan-400/10"
+              className="workspace-nav-button mb-3 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-cyan-300"
             >
-              ⌂ <span>Producciones</span>
+              <ArrowLeft className="h-4 w-4" /> <span>Producciones</span>
             </button>
             <label className="mb-4 block border-b border-slate-700 pb-4 text-xs text-slate-500">
               Producción activa
@@ -1375,11 +1474,11 @@ export default function Home() {
                   onClick={() => setView("dashboard")}
                   className={
                     view === "dashboard"
-                      ? "w-full rounded-lg bg-cyan-300 px-3 py-2 text-left text-sm font-bold text-cyan-950"
-                      : "w-full rounded-lg px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+                      ? "workspace-nav-button active w-full"
+                      : "workspace-nav-button w-full"
                   }
                 >
-                  ◫ Resumen
+                  <LayoutDashboard className="h-4 w-4" /> Resumen
                 </button>
               )}
               {canSupervise && (
@@ -1387,22 +1486,22 @@ export default function Home() {
                   onClick={() => setView("decisions")}
                   className={
                     view === "decisions"
-                      ? "w-full rounded-lg bg-cyan-300 px-3 py-2 text-left text-sm font-bold text-cyan-950"
-                      : "w-full rounded-lg px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+                      ? "workspace-nav-button active w-full"
+                      : "workspace-nav-button w-full"
                   }
                 >
-                  ◈ Sala de decisiones
+                  <Sparkles className="h-4 w-4" /> Sala de decisiones
                 </button>
               )}
               <button
                 onClick={() => setView("production")}
                 className={
                   view === "production"
-                    ? "w-full rounded-lg bg-cyan-300 px-3 py-2 text-left text-sm font-bold text-cyan-950"
-                    : "w-full rounded-lg px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+                    ? "workspace-nav-button active w-full"
+                    : "workspace-nav-button w-full"
                 }
               >
-                ▣ {canWork ? "Mis tareas" : "Tareas"}
+                <ListChecks className="h-4 w-4" /> {canWork ? "Mis tareas" : "Tareas"}
               </button>
               {production.current_user_role === "producer" && (
                 <button
@@ -1412,26 +1511,26 @@ export default function Home() {
                   }}
                   className={
                     view === "team"
-                      ? "w-full rounded-lg bg-cyan-300 px-3 py-2 text-left text-sm font-bold text-cyan-950"
-                      : "w-full rounded-lg px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+                      ? "workspace-nav-button active w-full"
+                      : "workspace-nav-button w-full"
                   }
                 >
-                  ♙ Gestionar equipo
+                  <UsersRound className="h-4 w-4" /> Gestionar equipo
                 </button>
               )}
               <button
                 onClick={() => setView("history")}
                 className={
                   view === "history"
-                    ? "w-full rounded-lg bg-cyan-300 px-3 py-2 text-left text-sm font-bold text-cyan-950"
-                    : "w-full rounded-lg px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+                    ? "workspace-nav-button active w-full"
+                    : "workspace-nav-button w-full"
                 }
               >
-                ◷ Historial
+                <History className="h-4 w-4" /> Historial
               </button>
             </nav>
           </aside>
-          <div className="min-w-0">
+          <div key={`${production.id}:${view}`} className="workspace-view min-w-0">
             {error && (
               <div role="alert" className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
                 <span className="min-w-0 break-words">{error}</span>
@@ -1541,14 +1640,14 @@ export default function Home() {
                     ["En curso", activeWork.length, "Asignadas, en proceso o QC"],
                     ["Completadas", completed.length, "Aprobadas por QC"],
                   ].map(([label, value, description]) => (
-                    <article key={label as string} className="rounded-xl border border-slate-700 bg-[#101b2b] p-5">
+                    <article key={label as string} className="workspace-card rounded-2xl border border-slate-700 bg-[#101b2b]/90 p-5">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
                       <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
                       <p className="mt-1 text-xs text-slate-500">{description}</p>
                     </article>
                   ))}
                 </div>
-                <section className="rounded-2xl border border-slate-700/70 bg-[#101b2b] p-5">
+                <section className="workspace-panel rounded-3xl border border-slate-700/70 bg-[#101b2b]/90 p-5">
                   <h3 className="font-semibold text-white">Progreso por área</h3>
                   <div className="mt-5 space-y-5">
                     {departmentMetrics.map((metric) => {
@@ -1567,14 +1666,14 @@ export default function Home() {
                     })}
                   </div>
                 </section>
-                <section className="rounded-2xl border border-slate-700/70 bg-[#101b2b] p-5">
+                <section className="workspace-panel rounded-3xl border border-slate-700/70 bg-[#101b2b]/90 p-5">
                   <h3 className="font-semibold text-white">Carga por artista</h3>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {activeMembers.filter((member) => member.role === "artist").length === 0 ? (
                       <p className="text-sm text-slate-500">Aún no hay artistas activos en esta producción.</p>
                     ) : activeMembers.filter((member) => member.role === "artist").map((member) => {
                       const assigned = activeWork.filter((ticket) => ticket.assigned_to_uid === member.uid).length;
-                      return <article key={member.uid} className="rounded-lg border border-slate-700 bg-[#162337] px-4 py-3"><p className="font-medium text-slate-100">{member.display_name ?? member.email ?? member.uid}</p><p className="mt-1 text-xs text-slate-400">{member.department ? departmentLabel[member.department] : "Sin área"} · {assigned} tareas activas</p></article>;
+                      return <article key={member.uid} className="workspace-card flex items-center gap-3 rounded-xl border border-slate-700 bg-[#162337] px-4 py-3"><UserAvatar profile={memberAvatarProfile(member)} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} /><div><p className="font-medium text-slate-100">{memberDisplayName(member)}</p><p className="mt-1 text-xs text-slate-400">{member.department ? departmentLabel[member.department] : "Sin área"} · {assigned} tareas activas</p></div></article>;
                     })}
                   </div>
                 </section>
@@ -1582,7 +1681,7 @@ export default function Home() {
             )}
             {view === "production" && (
               <>
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/70 bg-[#101b2b] p-4">
+                <div className="workspace-panel mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700/70 bg-[#101b2b]/90 p-4">
                   <div>
                     <h2 className="font-semibold text-white">
                       {canWork ? "Mis tareas asignadas" : "Área de producción"}
@@ -1686,12 +1785,12 @@ export default function Home() {
                   </div>
                   <button
                     onClick={() => void refreshTeam()}
-                    className="action-button reject"
+                    className="action-button reject flex items-center gap-2"
                   >
-                    Actualizar
+                    <RefreshCw className="h-3.5 w-3.5" /> Actualizar
                   </button>
                 </div>
-                <section className="rounded-2xl border border-slate-700/70 bg-[#101b2b] p-5">
+                <section className="workspace-panel rounded-3xl border border-slate-700/70 bg-[#101b2b]/90 p-5 sm:p-6">
                   <h3 className="font-semibold text-white">
                     {editingMemberUid ? "Editar miembro" : "Invitar integrante"}
                   </h3>
@@ -1701,21 +1800,16 @@ export default function Home() {
                   </p>
                   <form
                     onSubmit={addMember}
-                    className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5"
+                    className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(10rem,.55fr)_minmax(10rem,.55fr)_auto]"
                   >
-                    <input
-                      required
-                      readOnly={Boolean(editingMemberUid)}
-                      value={memberUid}
-                      onChange={(event) => setMemberUid(event.target.value)}
-                      placeholder="UID de Firebase"
-                      className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm read-only:opacity-70"
-                    />
-                    <input
-                      value={memberName}
-                      onChange={(event) => setMemberName(event.target.value)}
-                      placeholder="Nombre (opcional)"
-                      className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm"
+                    <MemberSearch
+                      selected={selectedMember}
+                      onSelectedChange={setSelectedMember}
+                      apiBaseUrl={apiBaseUrl}
+                      getAuthHeaders={getAuthHeaders}
+                      productionId={production.id}
+                      excludedUids={members.filter((member) => member.uid !== editingMemberUid && member.membership_status !== "declined").map((member) => member.uid)}
+                      disabled={Boolean(editingMemberUid)}
                     />
                     <select
                       value={memberRole}
@@ -1724,7 +1818,7 @@ export default function Home() {
                           event.target.value as "supervisor" | "artist",
                         )
                       }
-                      className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm"
+                      className="workspace-input text-sm"
                     >
                       <option value="artist">Artista</option>
                       <option value="supervisor">Supervisor</option>
@@ -1735,15 +1829,15 @@ export default function Home() {
                       onChange={(event) =>
                         setMemberDepartment(event.target.value as Department)
                       }
-                      className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                      className="workspace-input text-sm disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <option value="vfx">VFX</option>
                       <option value="sound">Sonido</option>
                       <option value="color">Color</option>
                       <option value="editorial">Edición</option>
                     </select>
-                    <div className="flex gap-2">
-                      <button className="flex-1 rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950">
+                    <div className="flex gap-2 lg:justify-end">
+                      <button disabled={!selectedMember} className="flex-1 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950 transition hover:-translate-y-0.5 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none">
                         {editingMemberUid
                           ? "Guardar cambios"
                           : "Enviar invitación"}
@@ -1753,8 +1847,7 @@ export default function Home() {
                           type="button"
                           onClick={() => {
                             setEditingMemberUid(null);
-                            setMemberUid("");
-                            setMemberName("");
+                            setSelectedMember(null);
                             setMemberRole("artist");
                             setMemberDepartment("vfx");
                           }}
@@ -1766,7 +1859,7 @@ export default function Home() {
                     </div>
                   </form>
                 </section>
-                <section className="rounded-2xl border border-amber-400/25 bg-amber-400/5 p-5">
+                <section className="workspace-panel rounded-3xl border border-amber-400/25 bg-amber-400/5 p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="font-semibold text-white">
@@ -1791,12 +1884,11 @@ export default function Home() {
                           key={member.uid}
                           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/20 px-3 py-3 text-sm"
                         >
-                          <div>
-                            <p className="text-slate-200">
-                              {member.display_name ??
-                                member.email ??
-                                member.uid}
-                            </p>
+                          <div className="flex min-w-0 items-center gap-3">
+                            <UserAvatar profile={memberAvatarProfile(member)} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} />
+                            <div className="min-w-0">
+                            <p className="truncate text-slate-200">{memberDisplayName(member)}</p>
+                            {member.username && <p className="truncate text-[11px] text-cyan-300">@{member.username}</p>}
                             <p className="mt-1 text-xs capitalize text-slate-400">
                               {member.role}
                               {member.department
@@ -1804,6 +1896,7 @@ export default function Home() {
                                 : ""}{" "}
                               · esperando respuesta
                             </p>
+                            </div>
                           </div>
                           <div className="flex gap-2">
                             <button
@@ -1824,7 +1917,7 @@ export default function Home() {
                     )}
                   </div>
                 </section>
-                <section className="rounded-2xl border border-slate-700/70 bg-[#101b2b] p-5">
+                <section className="workspace-panel rounded-3xl border border-slate-700/70 bg-[#101b2b]/90 p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="font-semibold text-white">
@@ -1842,21 +1935,21 @@ export default function Home() {
                     {activeMembers.map((member) => (
                       <article
                         key={member.uid}
-                        className="rounded-xl border border-slate-700 bg-[#162337] p-4"
+                        className="workspace-card rounded-2xl border border-slate-700 bg-[#162337] p-4"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-slate-100">
-                              {member.display_name ??
-                                member.email ??
-                                member.uid}
-                            </p>
+                          <div className="flex min-w-0 items-center gap-3">
+                            <UserAvatar profile={memberAvatarProfile(member)} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} />
+                            <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-100">{memberDisplayName(member)}</p>
+                            {member.username && <p className="truncate text-[11px] text-cyan-300">@{member.username}</p>}
                             <p className="mt-1 text-xs capitalize text-slate-400">
                               {member.role}
                               {member.department
                                 ? ` · ${departmentLabel[member.department]}`
                                 : ""}
                             </p>
+                            </div>
                           </div>
                           {member.role !== "producer" && (
                             <div className="flex gap-3">
@@ -1888,7 +1981,7 @@ export default function Home() {
                   <h2 className="mt-2 text-2xl font-semibold text-white">Historial de entregas</h2>
                   <p className="mt-1 text-sm text-slate-400">Busca decisiones pasadas y abre su línea de tiempo completa.</p>
                 </div>
-                <div className="mb-6 grid gap-3 rounded-xl border border-slate-700 bg-[#101b2b] p-4 md:grid-cols-3">
+                <div className="workspace-panel mb-6 grid gap-3 rounded-2xl border border-slate-700 bg-[#101b2b]/90 p-4 md:grid-cols-3">
                   <input
                     value={historySearch}
                     onChange={(event) => setHistorySearch(event.target.value)}
@@ -1901,7 +1994,7 @@ export default function Home() {
                   </select>
                   <select value={historyArtist} onChange={(event) => setHistoryArtist(event.target.value)} className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-slate-200">
                     <option value="all">Todo el equipo</option>
-                    {activeMembers.filter((member) => member.role === "artist").map((member) => <option key={member.uid} value={member.uid}>{member.display_name ?? member.email ?? member.uid}</option>)}
+                    {activeMembers.filter((member) => member.role === "artist").map((member) => <option key={member.uid} value={member.uid}>{memberDisplayName(member)}</option>)}
                   </select>
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
@@ -1946,9 +2039,7 @@ export default function Home() {
               <p className="mt-3 text-sm leading-6 text-slate-300">
                 Vas a retirar a{" "}
                 <span className="font-semibold text-white">
-                  {memberToRemove.display_name ??
-                    memberToRemove.email ??
-                    memberToRemove.uid}
+                  {memberDisplayName(memberToRemove)}
                 </span>
                 . Sus tareas activas volverán a <strong>Por revisar</strong>{" "}
                 para que un supervisor las reasigne.
@@ -2061,7 +2152,7 @@ export default function Home() {
                       )
                       .map((member) => (
                         <option key={member.uid} value={member.uid}>
-                          {member.display_name ?? member.email ?? member.uid}
+                          {memberDisplayName(member)}
                         </option>
                       ))}
                   </select>
@@ -2184,4 +2275,9 @@ export default function Home() {
       </section>
     </main>
   );
+}
+
+export default function Home() {
+  const { user } = useAuth();
+  return <Workspace key={user?.uid ?? "anonymous"} />;
 }

@@ -73,8 +73,11 @@ MAX_VIDEO_SIZE_BYTES: int = 50 * 1024 * 1024
 #: GCS object prefix under which all uploaded videos are stored.
 _UPLOAD_PREFIX = "uploads/videos"
 _EVIDENCE_PREFIX = "deliveries/evidence"
+_AVATAR_PREFIX = "profiles/avatars"
 ALLOWED_EVIDENCE_MIME_TYPES: frozenset[str] = frozenset({"image/jpeg", "image/png", "image/webp", "application/pdf"})
 MAX_EVIDENCE_SIZE_BYTES: int = 5 * 1024 * 1024
+ALLOWED_AVATAR_MIME_TYPES: frozenset[str] = frozenset({"image/jpeg", "image/png", "image/webp"})
+MAX_AVATAR_SIZE_BYTES: int = 2 * 1024 * 1024
 
 #: Only characters that are safe in GCS object names and unambiguous in URIs.
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-\.]+$")
@@ -302,6 +305,29 @@ class VideoStorageService:
         expected_prefix = f"gs://{self._bucket_name}/{_EVIDENCE_PREFIX}/"
         if not self._bucket_name or not gs_uri.startswith(expected_prefix):
             raise ValueError("La evidencia solicitada no es válida.")
+        object_name = gs_uri[len(f"gs://{self._bucket_name}/"):]
+        return self._get_bucket().blob(object_name).download_as_bytes()
+
+    def upload_avatar(self, data: bytes, mime_type: str, extension: str) -> str:
+        """Store a small private profile image and return its GCS URI."""
+        if mime_type not in ALLOWED_AVATAR_MIME_TYPES:
+            raise ValueError("La foto debe ser JPG, PNG o WEBP.")
+        if not data:
+            raise ValueError("La foto está vacía.")
+        if len(data) > MAX_AVATAR_SIZE_BYTES:
+            raise ValueError("La foto no puede superar 2 MB.")
+        if not is_safe_object_name(extension):
+            raise ValueError("La extensión de la foto no es válida.")
+        object_name = f"{_AVATAR_PREFIX}/{uuid.uuid4()}.{extension.lower()}"
+        blob = self._get_bucket().blob(object_name)
+        blob.upload_from_string(data, content_type=mime_type)
+        return f"gs://{self._bucket_name}/{object_name}"
+
+    def download_avatar(self, gs_uri: str) -> bytes:
+        """Read only private objects stored by :meth:`upload_avatar`."""
+        expected_prefix = f"gs://{self._bucket_name}/{_AVATAR_PREFIX}/"
+        if not self._bucket_name or not gs_uri.startswith(expected_prefix):
+            raise ValueError("La foto de perfil solicitada no es válida.")
         object_name = gs_uri[len(f"gs://{self._bucket_name}/"):]
         return self._get_bucket().blob(object_name).download_as_bytes()
 

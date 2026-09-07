@@ -57,6 +57,8 @@ from app.services.production_repository import ProductionDataRepository, Product
 from app.models.production import ProductionRole
 from app.services.video_storage import StorageConfigurationError, video_storage
 from app.services.ticket_activity_repository import TicketActivityDataRepository, create_ticket_activity_repository
+from app.api.profiles import get_current_profile
+from app.models.user_profile import UserProfile
 
 _log = logging.getLogger(__name__)
 
@@ -94,6 +96,7 @@ async def ingest_director_note(
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
     activities: TicketActivityDataRepository = Depends(_activity_repo),
+    actor_profile: UserProfile = Depends(get_current_profile),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> JSONResponse:
@@ -335,7 +338,7 @@ async def ingest_director_note(
         except ProductionNotFoundError as exc:
             raise HTTPException(status_code=404, detail="Producción no encontrada o sin acceso.") from exc
     ticket = repo.create(result, user.uid, x_production_id)
-    activities.record(ticket.id, x_production_id, user.uid, user.name, "Ticket creado con Gemini", "La nota del director fue analizada y enviada a revisión.")
+    activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Ticket creado con Gemini", "La nota del director fue analizada y enviada a revisión.")
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=Ticket.model_validate(ticket).model_dump(mode="json"),

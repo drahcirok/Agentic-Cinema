@@ -7,6 +7,7 @@ GOOGLE_CLOUD_LOCATION: global
 GOOGLE_CLOUD_STORAGE_BUCKET: frameflow-videos-drahcirok
 TICKET_STORAGE_BACKEND: firestore
 FIRESTORE_COLLECTION: postproduction_tickets
+USER_PROFILE_COLLECTION: user_profiles
 FIRESTORE_DATABASE_ID: "(default)"
 AUTH_REQUIRED: "true"
 CORS_ALLOWED_ORIGINS: "http://localhost:3000,https://agentic-cinema-iota.vercel.app"

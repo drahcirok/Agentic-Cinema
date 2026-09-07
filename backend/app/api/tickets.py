@@ -23,6 +23,9 @@ from app.models.notification import NotificationType
 from app.services.notification_repository import NotificationDataRepository, create_notification_repository
 from app.models.ticket_activity import TicketActivity
 from app.services.ticket_activity_repository import TicketActivityDataRepository, create_ticket_activity_repository
+from app.services.user_profile_repository import UserProfileDataRepository, create_user_profile_repository
+from app.api.profiles import get_current_profile, resolve_profile
+from app.models.user_profile import UserProfile
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -41,6 +44,10 @@ def _notification_repo(db: Session | None = Depends(get_db)) -> NotificationData
 
 def _activity_repo(db: Session | None = Depends(get_db)) -> TicketActivityDataRepository:
     return create_ticket_activity_repository(db)
+
+
+def _profile_repo(db: Session | None = Depends(get_db)) -> UserProfileDataRepository:
+    return create_user_profile_repository(db)
 
 
 def _require_production_access(production_id: UUID | None, user: CurrentUser, productions: ProductionDataRepository) -> None:
@@ -83,6 +90,7 @@ async def create_ticket(
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
     activities: TicketActivityDataRepository = Depends(_activity_repo),
+    actor_profile: UserProfile = Depends(get_current_profile),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -90,7 +98,7 @@ async def create_ticket(
     _require_production_access(x_production_id, user, productions)
     _require_role(x_production_id, user, productions, {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR})
     ticket = repo.create(payload, user.uid, x_production_id)
-    activities.record(ticket.id, x_production_id, user.uid, user.name, "Ticket creado", "Creado manualmente para revisión.")
+    activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Ticket creado", "Creado manualmente para revisión.")
     return ticket
 
 
@@ -115,6 +123,8 @@ async def review_ticket(
     productions: ProductionDataRepository = Depends(_production_repo),
     notifications: NotificationDataRepository = Depends(_notification_repo),
     activities: TicketActivityDataRepository = Depends(_activity_repo),
+    profiles: UserProfileDataRepository = Depends(_profile_repo),
+    actor_profile: UserProfile = Depends(get_current_profile),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -123,14 +133,20 @@ async def review_ticket(
         _require_production_access(x_production_id, user, productions)
         _require_role(x_production_id, user, productions, {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR})
         _validate_artist_assignment(review, x_production_id, user, productions)
-        ticket = repo.review(ticket_id, review, user.uid, x_production_id)
+        trusted_review = review
+        if review.decision is ReviewDecision.APPROVE and review.assigned_to_uid:
+            artist_profile = resolve_profile(review.assigned_to_uid, profiles)
+            trusted_review = review.model_copy(update={
+                "assigned_to_name": artist_profile.display_name if artist_profile else "Artista",
+            })
+        ticket = repo.review(ticket_id, trusted_review, user.uid, x_production_id)
         if review.decision is ReviewDecision.APPROVE and ticket.assigned_to_uid:
             notifications.create(ticket.assigned_to_uid, NotificationType.TASK_ASSIGNED, "Nueva tarea asignada", f"{ticket.shot_id}: tienes una tarea de {ticket.department.upper()} asignada.", x_production_id, ticket.id)
-            activities.record(ticket.id, x_production_id, user.uid, user.name, "Tarea asignada", f"Asignada a {ticket.assigned_to_name or ticket.assigned_to_uid}.")
+            activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Tarea asignada", f"Asignada a {ticket.assigned_to_name or ticket.assigned_to_uid}.")
         elif review.decision is ReviewDecision.REJECT:
-            activities.record(ticket.id, x_production_id, user.uid, user.name, "Ticket rechazado", review.supervisor_note)
+            activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Ticket rechazado", review.supervisor_note)
         else:
-            activities.record(ticket.id, x_production_id, user.uid, user.name, "Ticket enviado a edición", review.supervisor_note)
+            activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Ticket enviado a edición", review.supervisor_note)
         return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
@@ -144,6 +160,7 @@ async def update_artist_work(
     productions: ProductionDataRepository = Depends(_production_repo),
     notifications: NotificationDataRepository = Depends(_notification_repo),
     activities: TicketActivityDataRepository = Depends(_activity_repo),
+    actor_profile: UserProfile = Depends(get_current_profile),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -159,9 +176,9 @@ async def update_artist_work(
             for member in productions.list_members(x_production_id, user.uid):
                 if member.role in {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR}:
                     notifications.create(member.uid, NotificationType.QC_READY, "Entrega lista para QC", f"{ticket.shot_id} fue enviada a control de calidad.", x_production_id, ticket.id)
-            activities.record(ticket.id, x_production_id, user.uid, user.name, "Entrega enviada a QC", update.artist_note)
+            activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Entrega enviada a QC", update.artist_note)
         elif update.status is not None:
-            activities.record(ticket.id, x_production_id, user.uid, user.name, "Trabajo iniciado")
+            activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Trabajo iniciado")
         return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
@@ -177,6 +194,7 @@ async def quality_review_ticket(
     productions: ProductionDataRepository = Depends(_production_repo),
     notifications: NotificationDataRepository = Depends(_notification_repo),
     activities: TicketActivityDataRepository = Depends(_activity_repo),
+    actor_profile: UserProfile = Depends(get_current_profile),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -189,7 +207,7 @@ async def quality_review_ticket(
             kind = NotificationType.QC_COMPLETED if review.decision is QualityDecision.APPROVE else NotificationType.QC_RETURNED
             title = "Tarea aprobada en QC" if review.decision is QualityDecision.APPROVE else "Tarea devuelta para corrección"
             notifications.create(ticket.assigned_to_uid, kind, title, f"{ticket.shot_id}: {review.supervisor_feedback or 'Revisa el estado de tu tarea.'}", x_production_id, ticket.id)
-        activities.record(ticket.id, x_production_id, user.uid, user.name, "QC aprobado" if review.decision is QualityDecision.APPROVE else "Devuelta para corrección", review.supervisor_feedback)
+        activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "QC aprobado" if review.decision is QualityDecision.APPROVE else "Devuelta para corrección", review.supervisor_feedback)
         return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
@@ -204,6 +222,7 @@ async def upload_ticket_evidence(
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
     activities: TicketActivityDataRepository = Depends(_activity_repo),
+    actor_profile: UserProfile = Depends(get_current_profile),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -231,7 +250,7 @@ async def upload_ticket_evidence(
         if current_ticket.evidence_gcs_uri and current_ticket.evidence_gcs_uri != gs_uri:
             video_storage.delete_object(current_ticket.evidence_gcs_uri)
         action = "Evidencia reemplazada" if current_ticket.evidence_gcs_uri else "Evidencia adjuntada"
-        activities.record(ticket.id, x_production_id, user.uid, user.name, action, ticket.evidence_name)
+        activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, action, ticket.evidence_name)
         return ticket
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -249,6 +268,7 @@ async def remove_ticket_evidence(
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
     activities: TicketActivityDataRepository = Depends(_activity_repo),
+    actor_profile: UserProfile = Depends(get_current_profile),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -266,7 +286,7 @@ async def remove_ticket_evidence(
     try:
         ticket = repo.clear_evidence(ticket_id, user.uid, x_production_id)
         video_storage.delete_object(current_ticket.evidence_gcs_uri)
-        activities.record(ticket.id, x_production_id, user.uid, user.name, "Evidencia eliminada", current_ticket.evidence_name)
+        activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Evidencia eliminada", current_ticket.evidence_name)
         return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error
@@ -280,6 +300,7 @@ async def remove_ticket_delivery_link(
     repo: TicketDataRepository = Depends(_repo),
     productions: ProductionDataRepository = Depends(_production_repo),
     activities: TicketActivityDataRepository = Depends(_activity_repo),
+    actor_profile: UserProfile = Depends(get_current_profile),
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> Ticket:
@@ -296,7 +317,7 @@ async def remove_ticket_delivery_link(
         raise HTTPException(status_code=404, detail="Este ticket no tiene enlace de entrega.")
     try:
         ticket = repo.clear_delivery_link(ticket_id, user.uid, x_production_id)
-        activities.record(ticket.id, x_production_id, user.uid, user.name, "Enlace de entrega eliminado")
+        activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Enlace de entrega eliminado")
         return ticket
     except TicketNotFoundError as error:
         raise HTTPException(status_code=404, detail="Ticket no encontrado") from error

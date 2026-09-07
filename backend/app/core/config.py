@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # porque el sistema de archivos de sus instancias es efímero.
     ticket_storage_backend: str = "sqlite"
     firestore_collection: str = "postproduction_tickets"
+    user_profile_collection: str = "user_profiles"
     # ID de la base Native Mode creada para FrameFlow. Google reserva
     # "(default)" para la base predeterminada del proyecto.
     firestore_database_id: str = "(default)"
@@ -86,6 +87,8 @@ class Settings(BaseSettings):
             )
         if not self.firestore_collection.strip():
             raise ValueError("FIRESTORE_COLLECTION no puede estar vacío.")
+        if not self.user_profile_collection.strip():
+            raise ValueError("USER_PROFILE_COLLECTION no puede estar vacío.")
         if not self.firestore_database_id.strip():
             raise ValueError("FIRESTORE_DATABASE_ID no puede estar vacío.")
 

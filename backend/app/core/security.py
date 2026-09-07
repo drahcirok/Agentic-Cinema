@@ -16,6 +16,7 @@ class CurrentUser:
     uid: str
     email: str | None = None
     name: str | None = None
+    photo_url: str | None = None
 
 
 def _initialise_firebase() -> None:
@@ -71,8 +72,10 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Curren
 
     email = decoded.get("email")
     name = decoded.get("name")
+    photo_url = decoded.get("picture")
     return CurrentUser(
         uid=uid,
         email=email if isinstance(email, str) else None,
         name=name if isinstance(name, str) else None,
+        photo_url=photo_url if isinstance(photo_url, str) else None,
     )

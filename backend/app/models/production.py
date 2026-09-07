@@ -35,8 +35,6 @@ class ProductionMemberCreate(BaseModel):
     uid: str = Field(min_length=1, max_length=128)
     role: ProductionRole
     department: Department | None = None
-    display_name: str | None = Field(default=None, max_length=120)
-    email: str | None = Field(default=None, max_length=254)
 
 
 class InvitationResponse(BaseModel):
@@ -44,6 +42,11 @@ class InvitationResponse(BaseModel):
 
 
 class ProductionMember(ProductionMemberCreate):
+    display_name: str | None = Field(default=None, max_length=120)
+    username: str | None = Field(default=None, max_length=30)
+    photo_url: str | None = None
+    has_custom_avatar: bool = False
+    profile_updated_at: datetime | None = None
     production_id: UUID
     created_at: datetime
     membership_status: MembershipStatus = MembershipStatus.ACCEPTED

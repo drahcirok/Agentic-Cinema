@@ -13,6 +13,9 @@ from app.services.production_repository import ProductionMemberRemovalError
 from app.services.ticket_repository import TicketDataRepository, create_ticket_repository
 from app.models.notification import NotificationType
 from app.services.notification_repository import NotificationDataRepository, create_notification_repository
+from app.models.user_profile import UserProfile
+from app.services.user_profile_repository import UserProfileDataRepository, create_user_profile_repository
+from app.api.profiles import resolve_profile
 
 router = APIRouter(prefix="/productions", tags=["Productions"])
 
@@ -27,6 +30,22 @@ def _ticket_repo(db: Session | None = Depends(get_db)) -> TicketDataRepository:
 
 def _notification_repo(db: Session | None = Depends(get_db)) -> NotificationDataRepository:
     return create_notification_repository(db)
+
+
+def _profile_repo(db: Session | None = Depends(get_db)) -> UserProfileDataRepository:
+    return create_user_profile_repository(db)
+
+
+def _hydrate_member(member: ProductionMember, profile: UserProfile | None) -> ProductionMember:
+    if profile is None:
+        return member
+    return member.model_copy(update={
+        "display_name": profile.display_name,
+        "username": profile.username,
+        "photo_url": profile.photo_url,
+        "has_custom_avatar": profile.has_custom_avatar,
+        "profile_updated_at": profile.updated_at,
+    })
 
 
 @router.post("/bootstrap", response_model=Production)
@@ -45,16 +64,17 @@ async def create_production(payload: ProductionCreate, repo: ProductionDataRepos
 
 
 @router.get("/invitations", response_model=list[ProductionMember])
-async def list_invitations(repo: ProductionDataRepository = Depends(_repo), user: CurrentUser = Depends(get_current_user)) -> list[ProductionMember]:
-    return repo.list_invitations(user.uid)
+async def list_invitations(repo: ProductionDataRepository = Depends(_repo), profiles: UserProfileDataRepository = Depends(_profile_repo), user: CurrentUser = Depends(get_current_user)) -> list[ProductionMember]:
+    profile = profiles.ensure(user)
+    return [_hydrate_member(invitation, profile) for invitation in repo.list_invitations(user.uid)]
 
 
 @router.post("/{production_id}/invitation-response", response_model=ProductionMember)
-async def respond_to_invitation(production_id: UUID, payload: InvitationResponse, repo: ProductionDataRepository = Depends(_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
+async def respond_to_invitation(production_id: UUID, payload: InvitationResponse, repo: ProductionDataRepository = Depends(_repo), profiles: UserProfileDataRepository = Depends(_profile_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
     if payload.decision not in {MembershipStatus.ACCEPTED, MembershipStatus.DECLINED}:
         raise HTTPException(status_code=422, detail="La invitación debe aceptarse o rechazarse.")
     try:
-        return repo.respond_to_invitation(production_id, user.uid, payload.decision)
+        return _hydrate_member(repo.respond_to_invitation(production_id, user.uid, payload.decision), profiles.ensure(user))
     except ProductionNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Invitación no encontrada.") from exc
 
@@ -70,18 +90,30 @@ async def update_production(production_id: UUID, payload: ProductionUpdate, repo
 
 
 @router.get("/{production_id}/members", response_model=list[ProductionMember])
-async def list_members(production_id: UUID, repo: ProductionDataRepository = Depends(_repo), user: CurrentUser = Depends(get_current_user)) -> list[ProductionMember]:
+async def list_members(production_id: UUID, repo: ProductionDataRepository = Depends(_repo), profiles: UserProfileDataRepository = Depends(_profile_repo), user: CurrentUser = Depends(get_current_user)) -> list[ProductionMember]:
     try:
-        return repo.list_members(production_id, user.uid)
+        return [
+            _hydrate_member(member, resolve_profile(member.uid, profiles))
+            for member in repo.list_members(production_id, user.uid)
+        ]
     except ProductionNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Producción no encontrada.") from exc
 
 
 @router.post("/{production_id}/members", response_model=ProductionMember, status_code=status.HTTP_201_CREATED)
-async def add_member(production_id: UUID, payload: ProductionMemberCreate, repo: ProductionDataRepository = Depends(_repo), notifications: NotificationDataRepository = Depends(_notification_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
+async def add_member(production_id: UUID, payload: ProductionMemberCreate, repo: ProductionDataRepository = Depends(_repo), profiles: UserProfileDataRepository = Depends(_profile_repo), notifications: NotificationDataRepository = Depends(_notification_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
     try:
-        member = repo.add_member(production_id, payload, user.uid)
-        if member.membership_status is MembershipStatus.PENDING:
+        if payload.uid == user.uid:
+            raise HTTPException(status_code=409, detail="Ya eres productor de esta producción.")
+        target_profile = resolve_profile(payload.uid, profiles)
+        if target_profile is None:
+            raise HTTPException(status_code=404, detail="No encontramos un usuario de FrameFlow con esa identidad.")
+        existing = next((item for item in repo.list_members(production_id, user.uid) if item.uid == payload.uid), None)
+        if existing and existing.role.value == "producer":
+            raise HTTPException(status_code=403, detail="No puedes modificar al productor de la producción.")
+        member = _hydrate_member(repo.add_member(production_id, payload, user.uid), target_profile)
+        should_notify = existing is None or existing.membership_status is MembershipStatus.DECLINED
+        if member.membership_status is MembershipStatus.PENDING and should_notify:
             notifications.create(member.uid, NotificationType.INVITATION, "Nueva invitación", "Te invitaron a una producción. Revisa y responde la invitación.", production_id=production_id)
         return member
     except ProductionNotFoundError as exc:

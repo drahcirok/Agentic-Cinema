@@ -36,11 +36,12 @@ def test_verified_firebase_token_returns_only_safe_identity_fields(
     monkeypatch.setattr(
         auth,
         "verify_id_token",
-        lambda token: {"uid": "user-123", "email": "supervisor@example.com", "name": "Supervisor"},
+        lambda token: {"uid": "user-123", "email": "supervisor@example.com", "name": "Supervisor", "picture": "https://example.com/avatar.jpg"},
     )
 
     user = security.get_current_user("Bearer valid-token")
     assert (user.uid, user.email, user.name) == ("user-123", "supervisor@example.com", "Supervisor")
+    assert user.photo_url == "https://example.com/avatar.jpg"
 
 
 def test_invalid_firebase_token_is_rejected_without_leaking_provider_error(

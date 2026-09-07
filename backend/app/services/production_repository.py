@@ -90,7 +90,8 @@ class ProductionRepository:
             self._db.add(row)
         elif MembershipStatus(row.membership_status) is MembershipStatus.DECLINED:
             row.membership_status = str(MembershipStatus.PENDING)
-        row.role, row.department, row.display_name, row.email = str(payload.role), str(payload.department) if payload.department else None, payload.display_name, payload.email
+        row.role = str(payload.role)
+        row.department = str(payload.department) if payload.department else None
         self._db.commit()
         return ProductionMember(production_id=production_id, uid=row.uid, role=row.role, department=row.department, display_name=row.display_name, email=row.email, created_at=row.created_at, membership_status=row.membership_status)
 
@@ -193,7 +194,12 @@ class FirestoreProductionRepository:
         existing = member_reference.get()
         existing_status = existing.to_dict().get("membership_status", MembershipStatus.ACCEPTED) if existing.exists else None
         membership_status = MembershipStatus.PENDING if not existing.exists or existing_status == MembershipStatus.DECLINED else existing_status
-        data = payload.model_dump(mode="json") | {"created_at": now, "membership_status": membership_status}
+        data = payload.model_dump(mode="json") | {
+            "display_name": None,
+            "email": None,
+            "created_at": now,
+            "membership_status": membership_status,
+        }
         member_reference.set(data)
         return ProductionMember(production_id=production_id, **data)
 
