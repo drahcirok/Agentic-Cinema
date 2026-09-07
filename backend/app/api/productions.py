@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
 from app.database import get_db
-from app.models.production import InvitationResponse, MembershipStatus, Production, ProductionCreate, ProductionMember, ProductionMemberCreate, ProductionUpdate
+from app.models.production import InvitationResponse, MembershipStatus, Production, ProductionCreate, ProductionMember, ProductionMemberCreate, ProductionRole, ProductionUpdate
 from app.services.production_repository import ProductionDataRepository, ProductionNotFoundError, ProductionPermissionError, create_production_repository
 from app.services.production_repository import ProductionMemberRemovalError
 from app.services.ticket_repository import TicketDataRepository, create_ticket_repository
@@ -65,8 +65,17 @@ async def create_production(payload: ProductionCreate, repo: ProductionDataRepos
 
 @router.get("/invitations", response_model=list[ProductionMember])
 async def list_invitations(repo: ProductionDataRepository = Depends(_repo), profiles: UserProfileDataRepository = Depends(_profile_repo), user: CurrentUser = Depends(get_current_user)) -> list[ProductionMember]:
-    profile = profiles.ensure(user)
-    return [_hydrate_member(invitation, profile) for invitation in repo.list_invitations(user.uid)]
+    profiles.ensure(user)
+    return [
+        invitation.model_copy(
+            update={
+                "invited_by": resolve_profile(invitation.invited_by_uid, profiles)
+                if invitation.invited_by_uid
+                else None
+            }
+        )
+        for invitation in repo.list_invitations(user.uid)
+    ]
 
 
 @router.post("/{production_id}/invitation-response", response_model=ProductionMember)
@@ -103,18 +112,21 @@ async def list_members(production_id: UUID, repo: ProductionDataRepository = Dep
 @router.post("/{production_id}/members", response_model=ProductionMember, status_code=status.HTTP_201_CREATED)
 async def add_member(production_id: UUID, payload: ProductionMemberCreate, repo: ProductionDataRepository = Depends(_repo), profiles: UserProfileDataRepository = Depends(_profile_repo), notifications: NotificationDataRepository = Depends(_notification_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
     try:
+        if payload.role is ProductionRole.PRODUCER:
+            raise HTTPException(status_code=422, detail="La producción solo puede tener un productor propietario.")
         if payload.uid == user.uid:
             raise HTTPException(status_code=409, detail="Ya eres productor de esta producción.")
         target_profile = resolve_profile(payload.uid, profiles)
         if target_profile is None:
             raise HTTPException(status_code=404, detail="No encontramos un usuario de FrameFlow con esa identidad.")
+        inviter_profile = profiles.ensure(user)
         existing = next((item for item in repo.list_members(production_id, user.uid) if item.uid == payload.uid), None)
         if existing and existing.role.value == "producer":
             raise HTTPException(status_code=403, detail="No puedes modificar al productor de la producción.")
         member = _hydrate_member(repo.add_member(production_id, payload, user.uid), target_profile)
         should_notify = existing is None or existing.membership_status is MembershipStatus.DECLINED
         if member.membership_status is MembershipStatus.PENDING and should_notify:
-            notifications.create(member.uid, NotificationType.INVITATION, "Nueva invitación", "Te invitaron a una producción. Revisa y responde la invitación.", production_id=production_id)
+            notifications.create(member.uid, NotificationType.INVITATION, "Nueva invitación", f"{inviter_profile.display_name} (@{inviter_profile.username}) te invitó a una producción. Revisa y responde la invitación.", production_id=production_id)
         return member
     except ProductionNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Producción no encontrada.") from exc

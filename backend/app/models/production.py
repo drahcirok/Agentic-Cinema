@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 from app.models.ticket import Department
+from app.models.user_profile import UserProfile
 
 
 class ProductionRole(StrEnum):
@@ -51,6 +52,8 @@ class ProductionMember(ProductionMemberCreate):
     created_at: datetime
     membership_status: MembershipStatus = MembershipStatus.ACCEPTED
     production_name: str | None = None
+    invited_by_uid: str | None = None
+    invited_by: UserProfile | None = None
 
 
 class Production(BaseModel):

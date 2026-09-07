@@ -50,6 +50,7 @@ def test_producer_invites_artist_who_must_accept_before_seeing_production(reposi
     invitation = repository.list_invitations("artist")[0]
     repository.respond_to_invitation(production.id, "artist", MembershipStatus.ACCEPTED)
     assert invitation.production_id == production.id
+    assert invitation.invited_by_uid == "producer"
     assert repository.list_for_user("artist")[0].id == production.id
 
 

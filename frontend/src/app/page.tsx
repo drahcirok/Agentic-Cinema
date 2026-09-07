@@ -49,6 +49,8 @@ type ProductionMember = {
   photo_url?: string | null;
   has_custom_avatar?: boolean;
   profile_updated_at?: string | null;
+  invited_by_uid?: string | null;
+  invited_by?: UserProfile | null;
   membership_status?: "pending" | "accepted" | "declined";
 };
 type AppNotification = {
@@ -105,6 +107,11 @@ const priorityLabel: Record<Priority, string> = {
   medium: "Media",
   high: "Alta",
   critical: "Crítica",
+};
+const roleLabel: Record<ProductionMember["role"], string> = {
+  producer: "Productor",
+  supervisor: "Supervisor",
+  artist: "Artista",
 };
 const statusLabel: Record<TicketStatus, string> = {
   pending_review: "Por revisar",
@@ -1287,17 +1294,33 @@ function Workspace() {
                 {invitations.map((invitation) => (
                   <article
                     key={invitation.production_id}
-                    className="workspace-card rounded-xl border border-amber-400/30 bg-amber-400/5 p-5"
+                    className="workspace-card overflow-hidden rounded-2xl border border-amber-400/30 bg-amber-400/5"
                   >
-                    <p className="font-semibold text-white">
-                      {invitation.production_name ?? "Producción compartida"}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-400">
-                      Rol propuesto: {invitation.role}
-                      {invitation.department
-                        ? ` · ${departmentLabel[invitation.department]}`
-                        : ""}
-                    </p>
+                    <div className="border-b border-amber-300/10 bg-gradient-to-r from-amber-300/10 via-transparent to-cyan-300/5 p-5">
+                      <p className="text-[10px] font-bold tracking-[.2em] text-amber-300">INVITACIÓN A PRODUCCIÓN</p>
+                      <p className="mt-2 text-lg font-semibold text-white">
+                        {invitation.production_name ?? "Producción compartida"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-400">
+                        Te proponen entrar como <span className="font-semibold text-slate-200">{roleLabel[invitation.role]}</span>
+                        {invitation.department
+                          ? ` · ${departmentLabel[invitation.department]}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="p-5">
+                      {invitation.invited_by ? (
+                        <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/15 p-3">
+                          <UserAvatar profile={invitation.invited_by} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} size="lg" />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold tracking-[.14em] text-slate-500">TE INVITA</p>
+                            <p className="mt-1 truncate text-sm font-semibold text-white">{invitation.invited_by.display_name}</p>
+                            <p className="truncate text-xs text-cyan-300">@{invitation.invited_by.username}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="rounded-xl border border-white/5 bg-black/15 p-3 text-xs text-slate-400">Invitación enviada por el productor de esta producción.</p>
+                      )}
                     <div className="mt-4 flex gap-2">
                       <button
                         onClick={() =>
@@ -1315,6 +1338,7 @@ function Workspace() {
                       >
                         Rechazar
                       </button>
+                    </div>
                     </div>
                   </article>
                 ))}

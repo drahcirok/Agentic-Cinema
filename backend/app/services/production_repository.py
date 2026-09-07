@@ -96,8 +96,8 @@ class ProductionRepository:
         return ProductionMember(production_id=production_id, uid=row.uid, role=row.role, department=row.department, display_name=row.display_name, email=row.email, created_at=row.created_at, membership_status=row.membership_status)
 
     def list_invitations(self, user_id: str) -> list[ProductionMember]:
-        rows = self._db.query(ProductionMemberRecord, ProductionRecord.name).join(ProductionRecord, ProductionRecord.id == ProductionMemberRecord.production_id).filter(ProductionMemberRecord.uid == user_id, ProductionMemberRecord.membership_status == str(MembershipStatus.PENDING)).order_by(ProductionMemberRecord.created_at.desc()).all()
-        return [ProductionMember(production_id=UUID(row.production_id), uid=row.uid, role=row.role, department=row.department, display_name=row.display_name, email=row.email, created_at=row.created_at, membership_status=row.membership_status, production_name=name) for row, name in rows]
+        rows = self._db.query(ProductionMemberRecord, ProductionRecord.name, ProductionRecord.created_by).join(ProductionRecord, ProductionRecord.id == ProductionMemberRecord.production_id).filter(ProductionMemberRecord.uid == user_id, ProductionMemberRecord.membership_status == str(MembershipStatus.PENDING)).order_by(ProductionMemberRecord.created_at.desc()).all()
+        return [ProductionMember(production_id=UUID(row.production_id), uid=row.uid, role=row.role, department=row.department, display_name=row.display_name, email=row.email, created_at=row.created_at, membership_status=row.membership_status, production_name=name, invited_by_uid=created_by) for row, name, created_by in rows]
 
     def respond_to_invitation(self, production_id: UUID, user_id: str, decision: MembershipStatus) -> ProductionMember:
         if decision not in {MembershipStatus.ACCEPTED, MembershipStatus.DECLINED}:
@@ -208,7 +208,8 @@ class FirestoreProductionRepository:
         for document in self._collection().stream():  # type: ignore[union-attr]
             member = document.reference.collection("members").document(user_id).get()
             if member.exists and member.to_dict().get("membership_status") == MembershipStatus.PENDING:
-                invitations.append(ProductionMember(production_id=UUID(document.id), production_name=document.to_dict()["name"], **member.to_dict()))
+                production = document.to_dict()
+                invitations.append(ProductionMember(production_id=UUID(document.id), production_name=production["name"], invited_by_uid=production["created_by"], **member.to_dict()))
         return sorted(invitations, key=lambda invitation: invitation.created_at, reverse=True)
 
     def respond_to_invitation(self, production_id: UUID, user_id: str, decision: MembershipStatus) -> ProductionMember:
