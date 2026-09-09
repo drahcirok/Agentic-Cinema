@@ -42,7 +42,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Curren
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Se requiere iniciar sesión.",
+            detail="Sign-in is required.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -50,7 +50,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Curren
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token de acceso inválido.",
+            detail="Invalid access token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -66,7 +66,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Curren
         # Never return the underlying provider error or token to the caller.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Sesión inválida o expirada.",
+            detail="Invalid or expired session.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 

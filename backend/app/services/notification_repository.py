@@ -101,5 +101,5 @@ def create_notification_repository(db: Session | None = None) -> NotificationDat
     if settings.is_firestore:
         return FirestoreNotificationRepository()
     if db is None:
-        raise RuntimeError("Se requiere una sesión SQLAlchemy para SQLite.")
+        raise RuntimeError("A SQLAlchemy session is required for SQLite.")
     return NotificationRepository(db)

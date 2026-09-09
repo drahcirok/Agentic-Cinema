@@ -52,22 +52,22 @@ class Settings(BaseSettings):
         return self.gemini_backend == "vertex_ai"
 
     def validate_vertex_ai(self) -> None:
-        """Lanza ValueError si la configuración de Vertex AI está incompleta."""
+        """Raise ValueError when the Vertex AI configuration is incomplete."""
         if self.gemini_backend not in _VALID_BACKENDS:
             raise ValueError(
-                f"GEMINI_BACKEND='{self.gemini_backend}' no es válido. "
-                f"Valores permitidos: {sorted(_VALID_BACKENDS)}."
+                f"GEMINI_BACKEND='{self.gemini_backend}' is invalid. "
+                f"Allowed values: {sorted(_VALID_BACKENDS)}."
             )
         if self.is_vertex_ai and not self.google_cloud_project:
             raise ValueError(
-                "GOOGLE_CLOUD_PROJECT es requerido cuando GEMINI_BACKEND=vertex_ai."
+                "GOOGLE_CLOUD_PROJECT is required when GEMINI_BACKEND=vertex_ai."
             )
 
     def validate_storage(self) -> None:
-        """Lanza ValueError si la configuración de Cloud Storage está incompleta."""
+        """Raise ValueError when the Cloud Storage configuration is incomplete."""
         if not self.google_cloud_storage_bucket:
             raise ValueError(
-                "GOOGLE_CLOUD_STORAGE_BUCKET es requerido para subir videos."
+                "GOOGLE_CLOUD_STORAGE_BUCKET is required to upload videos."
             )
 
     @property
@@ -75,33 +75,33 @@ class Settings(BaseSettings):
         return self.ticket_storage_backend == "firestore"
 
     def validate_ticket_storage(self) -> None:
-        """Valida la configuración de persistencia sin exponer credenciales."""
+        """Validate persistence settings without exposing credentials."""
         if self.ticket_storage_backend not in _VALID_TICKET_STORAGE_BACKENDS:
             raise ValueError(
-                f"TICKET_STORAGE_BACKEND='{self.ticket_storage_backend}' no es válido. "
-                f"Valores permitidos: {sorted(_VALID_TICKET_STORAGE_BACKENDS)}."
+                f"TICKET_STORAGE_BACKEND='{self.ticket_storage_backend}' is invalid. "
+                f"Allowed values: {sorted(_VALID_TICKET_STORAGE_BACKENDS)}."
             )
         if self.is_firestore and not self.google_cloud_project:
             raise ValueError(
-                "GOOGLE_CLOUD_PROJECT es requerido cuando TICKET_STORAGE_BACKEND=firestore."
+                "GOOGLE_CLOUD_PROJECT is required when TICKET_STORAGE_BACKEND=firestore."
             )
         if not self.firestore_collection.strip():
-            raise ValueError("FIRESTORE_COLLECTION no puede estar vacío.")
+            raise ValueError("FIRESTORE_COLLECTION cannot be empty.")
         if not self.user_profile_collection.strip():
-            raise ValueError("USER_PROFILE_COLLECTION no puede estar vacío.")
+            raise ValueError("USER_PROFILE_COLLECTION cannot be empty.")
         if not self.firestore_database_id.strip():
-            raise ValueError("FIRESTORE_DATABASE_ID no puede estar vacío.")
+            raise ValueError("FIRESTORE_DATABASE_ID cannot be empty.")
 
     def validate_auth(self) -> None:
-        """Valida únicamente lo necesario cuando se protege la API con Firebase."""
+        """Validate only what is required when Firebase protects the API."""
         if self.auth_required and not self.google_cloud_project:
             raise ValueError(
-                "GOOGLE_CLOUD_PROJECT es requerido cuando AUTH_REQUIRED=true."
+                "GOOGLE_CLOUD_PROJECT is required when AUTH_REQUIRED=true."
             )
 
     @property
     def cors_origins(self) -> list[str]:
-        """Normaliza orígenes CORS evitando entradas vacías."""
+        """Normalize CORS origins while omitting empty entries."""
         return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
 

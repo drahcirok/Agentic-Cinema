@@ -50,7 +50,7 @@ class QualityDecision(StrEnum):
 
 class TicketCreate(BaseModel):
     shot_id: str = Field(min_length=1, max_length=64, examples=["SC03-SH014"])
-    director_note: str = Field(min_length=1, examples=["Eliminar el micrófono del encuadre."])
+    director_note: str = Field(min_length=1, examples=["Remove the microphone from the frame."])
     department: Department
     priority: Priority = Priority.MEDIUM
     ai_rationale: str | None = None
@@ -77,7 +77,7 @@ class TicketWorkUpdate(BaseModel):
             return None
         parsed = urlparse(value)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("El enlace de entrega debe usar http:// o https://.")
+            raise ValueError("The delivery link must use http:// or https://.")
         return value
 
 

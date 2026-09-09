@@ -290,11 +290,11 @@ class VideoStorageService:
     def upload_evidence(self, data: bytes, mime_type: str, extension: str) -> str:
         """Store a small, private QC evidence file and return its GCS URI."""
         if mime_type not in ALLOWED_EVIDENCE_MIME_TYPES:
-            raise ValueError("El archivo debe ser una imagen JPG, PNG, WEBP o un PDF.")
+            raise ValueError("The file must be a JPG, PNG, or WEBP image, or a PDF.")
         if len(data) > MAX_EVIDENCE_SIZE_BYTES:
-            raise ValueError("La evidencia no puede superar 5 MB.")
+            raise ValueError("The evidence cannot exceed 5 MB.")
         if not is_safe_object_name(extension):
-            raise ValueError("La extensión del archivo no es válida.")
+            raise ValueError("The file extension is invalid.")
         object_name = f"{_EVIDENCE_PREFIX}/{uuid.uuid4()}.{extension.lower()}"
         blob = self._get_bucket().blob(object_name)
         blob.upload_from_string(data, content_type=mime_type)
@@ -304,20 +304,20 @@ class VideoStorageService:
         """Read only objects written by :meth:`upload_evidence`."""
         expected_prefix = f"gs://{self._bucket_name}/{_EVIDENCE_PREFIX}/"
         if not self._bucket_name or not gs_uri.startswith(expected_prefix):
-            raise ValueError("La evidencia solicitada no es válida.")
+            raise ValueError("The requested evidence is invalid.")
         object_name = gs_uri[len(f"gs://{self._bucket_name}/"):]
         return self._get_bucket().blob(object_name).download_as_bytes()
 
     def upload_avatar(self, data: bytes, mime_type: str, extension: str) -> str:
         """Store a small private profile image and return its GCS URI."""
         if mime_type not in ALLOWED_AVATAR_MIME_TYPES:
-            raise ValueError("La foto debe ser JPG, PNG o WEBP.")
+            raise ValueError("The photo must be a JPG, PNG, or WEBP image.")
         if not data:
-            raise ValueError("La foto está vacía.")
+            raise ValueError("The photo is empty.")
         if len(data) > MAX_AVATAR_SIZE_BYTES:
-            raise ValueError("La foto no puede superar 2 MB.")
+            raise ValueError("The photo cannot exceed 2 MB.")
         if not is_safe_object_name(extension):
-            raise ValueError("La extensión de la foto no es válida.")
+            raise ValueError("The photo's file extension is invalid.")
         object_name = f"{_AVATAR_PREFIX}/{uuid.uuid4()}.{extension.lower()}"
         blob = self._get_bucket().blob(object_name)
         blob.upload_from_string(data, content_type=mime_type)
@@ -327,7 +327,7 @@ class VideoStorageService:
         """Read only private objects stored by :meth:`upload_avatar`."""
         expected_prefix = f"gs://{self._bucket_name}/{_AVATAR_PREFIX}/"
         if not self._bucket_name or not gs_uri.startswith(expected_prefix):
-            raise ValueError("La foto de perfil solicitada no es válida.")
+            raise ValueError("The requested profile photo is invalid.")
         object_name = gs_uri[len(f"gs://{self._bucket_name}/"):]
         return self._get_bucket().blob(object_name).download_as_bytes()
 

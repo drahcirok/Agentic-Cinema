@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title="FrameFlow API",
-    description="API de orquestación para postproducción y VFX.",
+    description="Orchestration API for post-production and VFX.",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -47,5 +47,5 @@ app.include_router(profiles_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
-    """Confirma que el servicio está disponible."""
+    """Confirm that the service is available."""
     return {"status": "ok", "service": "frameflow-backend"}

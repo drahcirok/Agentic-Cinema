@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const signOut = useCallback(async () => { await firebaseSignOut(getFirebaseAuth()); }, []);
   const getAuthHeaders = useCallback(async () => {
-    if (!user) throw new Error("Tu sesión ya no está disponible. Vuelve a iniciar sesión.");
+    if (!user) throw new Error("Your session is no longer available. Please sign in again.");
     return { Authorization: `Bearer ${await user.getIdToken()}` };
   }, [user]);
 
@@ -45,6 +45,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth debe utilizarse dentro de AuthProvider.");
+  if (!context) throw new Error("useAuth must be used within AuthProvider.");
   return context;
 }

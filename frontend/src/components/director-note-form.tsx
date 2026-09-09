@@ -50,11 +50,11 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
     if (!file) return;
 
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      setMessage({ text: `Tipo no permitido: ${file.type}. Usa .jpg, .png o .webp.`, variant: "error" });
+      setMessage({ text: `Unsupported file type: ${file.type}. Use .jpg, .png, or .webp.`, variant: "error" });
       return;
     }
     if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
-      setMessage({ text: `El fotograma supera los ${MAX_IMAGE_MB} MiB.`, variant: "error" });
+      setMessage({ text: `The frame exceeds ${MAX_IMAGE_MB} MiB.`, variant: "error" });
       return;
     }
 
@@ -62,7 +62,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
     removeVideo();
 
     // Revoke the previous object URL before creating a new one to avoid
-    // leaking blob memory when the user replaces the image without clicking "Quitar".
+    // leaking blob memory when the user replaces the image without clicking "Remove".
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(file);
@@ -87,11 +87,11 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
     if (!file) return;
 
     if (!ALLOWED_VIDEO_TYPES.includes(file.type)) {
-      setMessage({ text: `Tipo no permitido: ${file.type}. Usa .mp4.`, variant: "error" });
+      setMessage({ text: `Unsupported file type: ${file.type}. Use .mp4.`, variant: "error" });
       return;
     }
     if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
-      setMessage({ text: `El video supera los ${MAX_VIDEO_MB} MiB.`, variant: "error" });
+      setMessage({ text: `The video exceeds ${MAX_VIDEO_MB} MiB.`, variant: "error" });
       return;
     }
 
@@ -132,7 +132,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail ?? "No se pudo procesar la nota.");
+        throw new Error(data.detail ?? "Unable to process the note.");
       }
 
       if (response.status === 201) {
@@ -143,14 +143,14 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
         removeFrame();
         removeVideo();
         const mediaLabel = video
-          ? "el video"
+          ? "the video"
           : frame
-          ? "el fotograma"
+          ? "the frame"
           : null;
         setMessage({
           text: mediaLabel
-            ? `Gemini analizó la nota y ${mediaLabel}. Ticket pendiente de revisión.`
-            : "Gemini creó un ticket pendiente de revisión.",
+            ? `Gemini analyzed the note and ${mediaLabel}. The ticket is pending review.`
+            : "Gemini created a ticket pending review.",
           variant: "ok",
         });
       } else {
@@ -161,13 +161,13 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
         removeFrame();
         removeVideo();
         setMessage({
-          text: `No se creó ticket: esta nota no requiere postproducción.${reason ? ` ${reason}` : ""}`,
+          text: `No ticket was created: this note does not require post-production.${reason ? ` ${reason}` : ""}`,
           variant: "info",
         });
       }
     } catch (error) {
       setMessage({
-        text: error instanceof Error ? error.message : "No se pudo procesar la nota.",
+        text: error instanceof Error ? error.message : "Unable to process the note.",
         variant: "error",
       });
     } finally {
@@ -180,7 +180,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
       {/* Main row */}
       <div className="grid gap-3 md:grid-cols-[160px_1fr_auto] md:items-end">
         <label className="grid gap-1 text-xs font-semibold text-slate-400">
-          TOMA
+          SHOT
           <input
             required
             value={shotId}
@@ -190,12 +190,12 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
           />
         </label>
         <label className="grid gap-1 text-xs font-semibold text-slate-400">
-          NOTA DEL DIRECTOR
+          DIRECTOR&apos;S NOTE
           <input
             required
             value={directorNote}
             onChange={(e) => setDirectorNote(e.target.value)}
-            placeholder="Ej. Eliminar el micrófono del encuadre."
+            placeholder="E.g. Remove the microphone from the frame."
             className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300"
           />
         </label>
@@ -203,7 +203,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
           disabled={submitting}
           className="rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950 disabled:opacity-50"
         >
-          {submitting ? "Analizando…" : "Analizar con Gemini"}
+          {submitting ? "Analyzing…" : "Analyze with Gemini"}
         </button>
       </div>
 
@@ -213,9 +213,9 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
         {/* ---- Frame picker ---- */}
         <div className="flex flex-col gap-1">
           <span className="text-xs font-semibold text-slate-400">
-            FOTOGRAMA{" "}
+            FRAME{" "}
             <span className="font-normal text-slate-500">
-              (opcional · .jpg .png .webp · máx. {MAX_IMAGE_MB} MiB)
+              (optional · .jpg .png .webp · max. {MAX_IMAGE_MB} MiB)
             </span>
           </span>
           <div className="flex items-center gap-2">
@@ -226,7 +226,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
                   : "cursor-pointer rounded-lg border border-dashed border-slate-600 bg-[#162337] px-3 py-1.5 text-xs text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
               }
             >
-              {frame ? "Cambiar imagen" : "Seleccionar imagen"}
+              {frame ? "Change image" : "Select image"}
               <input
                 ref={frameInputRef}
                 type="file"
@@ -242,7 +242,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
                 onClick={removeFrame}
                 className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-300 hover:bg-rose-500/20"
               >
-                Quitar
+                Remove
               </button>
             )}
           </div>
@@ -258,7 +258,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
           <span className="text-xs font-semibold text-slate-400">
             VIDEO{" "}
             <span className="font-normal text-slate-500">
-              (opcional · .mp4 · máx. {MAX_VIDEO_MB} MiB)
+              (optional · .mp4 · max. {MAX_VIDEO_MB} MiB)
             </span>
           </span>
           <div className="flex items-center gap-2">
@@ -269,7 +269,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
                   : "cursor-pointer rounded-lg border border-dashed border-slate-600 bg-[#162337] px-3 py-1.5 text-xs text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
               }
             >
-              {video ? "Cambiar video" : "Seleccionar video"}
+              {video ? "Change video" : "Select video"}
               <input
                 ref={videoInputRef}
                 type="file"
@@ -285,7 +285,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
                 onClick={removeVideo}
                 className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-300 hover:bg-rose-500/20"
               >
-                Quitar
+                Remove
               </button>
             )}
           </div>
@@ -302,7 +302,7 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewUrl}
-              alt="Previsualización del fotograma"
+              alt="Frame preview"
               className="h-20 w-auto rounded-lg border border-slate-600 object-cover"
             />
           </div>
@@ -312,12 +312,12 @@ export default function DirectorNoteForm({ onCreated, productionId }: { onCreate
       {/* Quota warnings */}
       {frame && (
         <p className="mt-2 text-xs text-amber-400/80">
-          ⚠ Enviar un fotograma consume cuota adicional de Gemini.
+          ⚠ Sending a frame uses additional Gemini quota.
         </p>
       )}
       {video && (
         <p className="mt-2 text-xs text-amber-400/80">
-          ⚠ Enviar un video sube el archivo a Cloud Storage y consume cuota adicional de Gemini.
+          ⚠ Sending a video uploads the file to Cloud Storage and uses additional Gemini quota.
         </p>
       )}
 

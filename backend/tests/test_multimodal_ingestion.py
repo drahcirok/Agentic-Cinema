@@ -228,7 +228,7 @@ class TestDisallowedMimeType:
             files={"frame": (filename, io.BytesIO(b"fake"), mime_type)},
         )
         assert response.status_code == 415
-        assert "no permitido" in response.json()["detail"].lower()
+        assert "not allowed" in response.json()["detail"].lower()
 
     def test_disallowed_type_does_not_call_gemini(self, client: TestClient):
         with (
@@ -443,7 +443,7 @@ class TestDualContractCompatibility:
             headers={"Content-Type": "text/xml"},
         )
         assert response.status_code == 415
-        assert "no soportado" in response.json()["detail"].lower()
+        assert "unsupported" in response.json()["detail"].lower()
 
     def test_unsupported_content_type_text_plain_returns_415(self, client: TestClient):
         """text/plain must be rejected with 415."""

@@ -81,11 +81,11 @@ async def list_invitations(repo: ProductionDataRepository = Depends(_repo), prof
 @router.post("/{production_id}/invitation-response", response_model=ProductionMember)
 async def respond_to_invitation(production_id: UUID, payload: InvitationResponse, repo: ProductionDataRepository = Depends(_repo), profiles: UserProfileDataRepository = Depends(_profile_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
     if payload.decision not in {MembershipStatus.ACCEPTED, MembershipStatus.DECLINED}:
-        raise HTTPException(status_code=422, detail="La invitación debe aceptarse o rechazarse.")
+        raise HTTPException(status_code=422, detail="The invitation must be accepted or declined.")
     try:
         return _hydrate_member(repo.respond_to_invitation(production_id, user.uid, payload.decision), profiles.ensure(user))
     except ProductionNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Invitación no encontrada.") from exc
+        raise HTTPException(status_code=404, detail="Invitation not found.") from exc
 
 
 @router.patch("/{production_id}", response_model=Production)
@@ -93,9 +93,9 @@ async def update_production(production_id: UUID, payload: ProductionUpdate, repo
     try:
         return repo.update(production_id, payload, user.uid)
     except ProductionNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Producción no encontrada.") from exc
+        raise HTTPException(status_code=404, detail="Production not found.") from exc
     except ProductionPermissionError as exc:
-        raise HTTPException(status_code=403, detail="Solo el productor puede renombrar la producción.") from exc
+        raise HTTPException(status_code=403, detail="Only the producer can rename the production.") from exc
 
 
 @router.get("/{production_id}/members", response_model=list[ProductionMember])
@@ -106,32 +106,32 @@ async def list_members(production_id: UUID, repo: ProductionDataRepository = Dep
             for member in repo.list_members(production_id, user.uid)
         ]
     except ProductionNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Producción no encontrada.") from exc
+        raise HTTPException(status_code=404, detail="Production not found.") from exc
 
 
 @router.post("/{production_id}/members", response_model=ProductionMember, status_code=status.HTTP_201_CREATED)
 async def add_member(production_id: UUID, payload: ProductionMemberCreate, repo: ProductionDataRepository = Depends(_repo), profiles: UserProfileDataRepository = Depends(_profile_repo), notifications: NotificationDataRepository = Depends(_notification_repo), user: CurrentUser = Depends(get_current_user)) -> ProductionMember:
     try:
         if payload.role is ProductionRole.PRODUCER:
-            raise HTTPException(status_code=422, detail="La producción solo puede tener un productor propietario.")
+            raise HTTPException(status_code=422, detail="A production can only have one owner-producer.")
         if payload.uid == user.uid:
-            raise HTTPException(status_code=409, detail="Ya eres productor de esta producción.")
+            raise HTTPException(status_code=409, detail="You are already the producer of this production.")
         target_profile = resolve_profile(payload.uid, profiles)
         if target_profile is None:
-            raise HTTPException(status_code=404, detail="No encontramos un usuario de FrameFlow con esa identidad.")
+            raise HTTPException(status_code=404, detail="No FrameFlow user was found with that identity.")
         inviter_profile = profiles.ensure(user)
         existing = next((item for item in repo.list_members(production_id, user.uid) if item.uid == payload.uid), None)
         if existing and existing.role.value == "producer":
-            raise HTTPException(status_code=403, detail="No puedes modificar al productor de la producción.")
+            raise HTTPException(status_code=403, detail="The production's producer cannot be modified.")
         member = _hydrate_member(repo.add_member(production_id, payload, user.uid), target_profile)
         should_notify = existing is None or existing.membership_status is MembershipStatus.DECLINED
         if member.membership_status is MembershipStatus.PENDING and should_notify:
-            notifications.create(member.uid, NotificationType.INVITATION, "Nueva invitación", f"{inviter_profile.display_name} (@{inviter_profile.username}) te invitó a una producción. Revisa y responde la invitación.", production_id=production_id)
+            notifications.create(member.uid, NotificationType.INVITATION, "New invitation", f"{inviter_profile.display_name} (@{inviter_profile.username}) invited you to a production. Review and respond to the invitation.", production_id=production_id)
         return member
     except ProductionNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Producción no encontrada.") from exc
+        raise HTTPException(status_code=404, detail="Production not found.") from exc
     except ProductionPermissionError as exc:
-        raise HTTPException(status_code=403, detail="Solo el productor puede gestionar el equipo.") from exc
+        raise HTTPException(status_code=403, detail="Only the producer can manage the team.") from exc
 
 
 @router.delete("/{production_id}/members/{member_uid}", status_code=status.HTTP_204_NO_CONTENT)
@@ -141,6 +141,6 @@ async def remove_member(production_id: UUID, member_uid: str, repo: ProductionDa
         repo.remove_member(production_id, member_uid, user.uid)
         tickets.unassign_member_tasks(production_id, member_uid)
     except ProductionNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Miembro o producción no encontrados.") from exc
+        raise HTTPException(status_code=404, detail="Member or production not found.") from exc
     except (ProductionPermissionError, ProductionMemberRemovalError) as exc:
-        raise HTTPException(status_code=403, detail="No puedes retirar a este miembro.") from exc
+        raise HTTPException(status_code=403, detail="You cannot remove this member.") from exc

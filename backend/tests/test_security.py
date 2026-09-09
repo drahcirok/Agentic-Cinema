@@ -57,4 +57,4 @@ def test_invalid_firebase_token_is_rejected_without_leaking_provider_error(
     with pytest.raises(HTTPException) as error:
         security.get_current_user("Bearer invalid-token")
     assert error.value.status_code == 401
-    assert error.value.detail == "Sesión inválida o expirada."
+    assert error.value.detail == "Invalid or expired session."

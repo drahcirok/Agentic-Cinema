@@ -100,16 +100,16 @@ async def ingest_director_note(
     user: CurrentUser = Depends(get_current_user),
     x_production_id: UUID | None = Header(default=None),
 ) -> JSONResponse:
-    """Evalúa si la nota requiere postproducción y, si es así, crea el ticket.
+    """Determine whether the note requires post-production and create a ticket if it does.
 
-    Acepta ``application/json``, ``multipart/form-data`` y
-    ``application/x-www-form-urlencoded``.  En multipart se puede adjuntar un
-    fotograma *o* un video MP4 (no ambos).
+    Accepts ``application/json``, ``multipart/form-data``, and
+    ``application/x-www-form-urlencoded``. A multipart request may include a
+    frame *or* an MP4 video (not both).
 
-    Respuestas:
-    * **201** — requiere postproducción; cuerpo: ``Ticket``.
-    * **200** — no requiere postproducción; cuerpo: ``EligibilityRejection``.
-      No se escribe ningún registro en SQLite.
+    Responses:
+    * **201** — post-production is required; body: ``Ticket``.
+    * **200** — post-production is not required; body: ``EligibilityRejection``.
+      No SQLite record is written.
     """
     mt = _media_type(request)
 
@@ -120,7 +120,7 @@ async def ingest_director_note(
         try:
             raw = await request.json()
         except Exception:
-            raise HTTPException(status_code=400, detail="JSON inválido.")
+            raise HTTPException(status_code=400, detail="Invalid JSON.")
 
         try:
             payload = DirectorNoteIngestion.model_validate(raw)
@@ -141,15 +141,15 @@ async def ingest_director_note(
         try:
             form = await request.form()
         except Exception as exc:
-            raise HTTPException(status_code=400, detail="Formulario inválido.") from exc
+            raise HTTPException(status_code=400, detail="Invalid form data.") from exc
 
         shot_id_raw = form.get("shot_id")
         director_note_raw = form.get("director_note")
 
         if not shot_id_raw or not isinstance(shot_id_raw, str):
-            raise HTTPException(status_code=422, detail="El campo 'shot_id' es obligatorio.")
+            raise HTTPException(status_code=422, detail="The 'shot_id' field is required.")
         if not director_note_raw or not isinstance(director_note_raw, str):
-            raise HTTPException(status_code=422, detail="El campo 'director_note' es obligatorio.")
+            raise HTTPException(status_code=422, detail="The 'director_note' field is required.")
 
         shot_id = shot_id_raw.strip()
         director_note = director_note_raw.strip()
@@ -157,10 +157,10 @@ async def ingest_director_note(
         if not (1 <= len(shot_id) <= 64):
             raise HTTPException(
                 status_code=422,
-                detail="'shot_id' debe tener entre 1 y 64 caracteres.",
+                detail="'shot_id' must be between 1 and 64 characters.",
             )
         if len(director_note) < 1:
-            raise HTTPException(status_code=422, detail="'director_note' no puede estar vacío.")
+            raise HTTPException(status_code=422, detail="'director_note' cannot be empty.")
 
         frame_field = form.get("frame")
         video_field = form.get("video")
@@ -173,8 +173,8 @@ async def ingest_director_note(
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    "No se pueden adjuntar 'frame' y 'video' en la misma solicitud. "
-                    "Envía solo uno a la vez."
+                    "'frame' and 'video' cannot be attached to the same request. "
+                    "Send only one at a time."
                 ),
             )
 
@@ -192,21 +192,21 @@ async def ingest_director_note(
                 raise HTTPException(
                     status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
                     detail=(
-                        f"Tipo de imagen no permitido: '{image_mime}'. "
-                        f"Se aceptan: {', '.join(sorted(ALLOWED_IMAGE_MIME_TYPES))}."
+                        f"Image type not allowed: '{image_mime}'. "
+                        f"Accepted types: {', '.join(sorted(ALLOWED_IMAGE_MIME_TYPES))}."
                     ),
                 )
 
             image_bytes = await frame_field.read()
 
             if len(image_bytes) == 0:
-                raise HTTPException(status_code=422, detail="El fotograma adjunto está vacío.")
+                raise HTTPException(status_code=422, detail="The attached frame is empty.")
 
             if len(image_bytes) > MAX_IMAGE_SIZE_BYTES:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     detail=(
-                        f"El fotograma supera el límite de "
+                        f"The frame exceeds the size limit of "
                         f"{MAX_IMAGE_SIZE_BYTES // (1024 * 1024)} MiB."
                     ),
                 )
@@ -220,21 +220,21 @@ async def ingest_director_note(
                 raise HTTPException(
                     status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
                     detail=(
-                        f"Tipo de video no permitido: '{video_mime}'. "
-                        f"Se aceptan: {', '.join(sorted(ALLOWED_VIDEO_MIME_TYPES))}."
+                        f"Video type not allowed: '{video_mime}'. "
+                        f"Accepted types: {', '.join(sorted(ALLOWED_VIDEO_MIME_TYPES))}."
                     ),
                 )
 
             video_bytes = await video_field.read()
 
             if len(video_bytes) == 0:
-                raise HTTPException(status_code=422, detail="El video adjunto está vacío.")
+                raise HTTPException(status_code=422, detail="The attached video is empty.")
 
             if len(video_bytes) > MAX_VIDEO_SIZE_BYTES:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     detail=(
-                        f"El video supera el límite de "
+                        f"The video exceeds the size limit of "
                         f"{MAX_VIDEO_SIZE_BYTES // (1024 * 1024)} MiB."
                     ),
                 )
@@ -246,8 +246,8 @@ async def ingest_director_note(
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=(
-                f"Content-Type no soportado: '{mt}'. "
-                "Use 'application/json' o 'multipart/form-data'."
+                f"Unsupported Content-Type: '{mt}'. "
+                "Use 'application/json' or 'multipart/form-data'."
             ),
         )
 
@@ -263,12 +263,12 @@ async def ingest_director_note(
             except StorageConfigurationError as exc:
                 raise HTTPException(
                     status_code=503,
-                    detail=f"Configuración de Cloud Storage incompleta: {exc}",
+                    detail=f"Incomplete Cloud Storage configuration: {exc}",
                 ) from exc
             except Exception as exc:
                 raise HTTPException(
                     status_code=502,
-                    detail="No se pudo subir el video a Cloud Storage.",
+                    detail="The video could not be uploaded to Cloud Storage.",
                 ) from exc
 
             try:
@@ -280,7 +280,7 @@ async def ingest_director_note(
             except Exception as exc:
                 raise HTTPException(
                     status_code=502,
-                    detail="Gemini no pudo analizar el video.",
+                    detail="Gemini could not analyze the video.",
                 ) from exc
 
         finally:
@@ -310,7 +310,7 @@ async def ingest_director_note(
         except GeminiConfigurationError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
         except Exception as error:
-            raise HTTPException(status_code=502, detail="Gemini no pudo analizar la nota.") from error
+            raise HTTPException(status_code=502, detail="Gemini could not analyze the note.") from error
 
     else:
         try:
@@ -318,7 +318,7 @@ async def ingest_director_note(
         except GeminiConfigurationError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
         except Exception as error:
-            raise HTTPException(status_code=502, detail="Gemini no pudo analizar la nota.") from error
+            raise HTTPException(status_code=502, detail="Gemini could not analyze the note.") from error
 
     # ------------------------------------------------------------------
     # Route the result
@@ -334,11 +334,11 @@ async def ingest_director_note(
             members = productions.list_members(x_production_id, user.uid)
             role = next(member.role for member in members if member.uid == user.uid)
             if role not in {ProductionRole.PRODUCER, ProductionRole.SUPERVISOR}:
-                raise HTTPException(status_code=403, detail="Tu rol no puede crear tickets.")
+                raise HTTPException(status_code=403, detail="Your role cannot create tickets.")
         except ProductionNotFoundError as exc:
-            raise HTTPException(status_code=404, detail="Producción no encontrada o sin acceso.") from exc
+            raise HTTPException(status_code=404, detail="Production not found or access denied.") from exc
     ticket = repo.create(result, user.uid, x_production_id)
-    activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Ticket creado con Gemini", "La nota del director fue analizada y enviada a revisión.")
+    activities.record(ticket.id, x_production_id, user.uid, actor_profile.display_name, "Ticket created with Gemini", "The director's note was analyzed and submitted for review.")
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=Ticket.model_validate(ticket).model_dump(mode="json"),

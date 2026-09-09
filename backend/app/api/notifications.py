@@ -32,4 +32,4 @@ async def mark_read(notification_id: UUID, repo: NotificationDataRepository = De
     try:
         return repo.mark_read(notification_id, user.uid)
     except NotificationNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Notificación no encontrada.") from exc
+        raise HTTPException(status_code=404, detail="Notification not found.") from exc

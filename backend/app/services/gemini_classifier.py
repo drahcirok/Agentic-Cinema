@@ -31,9 +31,9 @@ from app.models.ticket import TicketCreate
 _EVALUATE_DECLARATION = types.FunctionDeclaration(
     name="evaluate_postproduction_request",
     description=(
-        "Evalúa si una nota del director requiere trabajo real de postproducción. "
-        "Si lo requiere, clasifica el departamento y la prioridad. "
-        "Si no, explica por qué no aplica."
+        "Determine whether a director's note requires actual post-production work. "
+        "If it does, classify the department and priority. "
+        "If it does not, explain why it is not applicable."
     ),
     parameters={
         "type": "object",
@@ -41,45 +41,45 @@ _EVALUATE_DECLARATION = types.FunctionDeclaration(
             "requires_postproduction": {
                 "type": "boolean",
                 "description": (
-                    "true si la nota exige trabajo de VFX, color, sonido o edición. "
-                    "false para notas de logística, catering, transporte, horarios, "
-                    "felicitaciones, conversaciones no relacionadas o cualquier pedido "
-                    "que no implique trabajo real de postproducción."
+                    "true when the note requires actual VFX, color, sound, or editorial work. "
+                    "false for notes about logistics, catering, transportation, scheduling, "
+                    "congratulations, unrelated conversations, or any request that does not "
+                    "involve actual post-production work."
                 ),
             },
             "department": {
                 "type": "string",
                 "enum": ["vfx", "color", "sound", "editorial"],
                 "description": (
-                    "Departamento principal responsable. "
-                    "Obligatorio cuando requires_postproduction es true. "
-                    "Omite este campo cuando requires_postproduction es false."
+                    "Primary responsible department. "
+                    "Required when requires_postproduction is true. "
+                    "Omit this field when requires_postproduction is false."
                 ),
             },
             "priority": {
                 "type": "string",
                 "enum": ["low", "medium", "high", "critical"],
                 "description": (
-                    "Prioridad según impacto en la entrega. "
-                    "Obligatorio cuando requires_postproduction es true. "
-                    "Omite este campo cuando requires_postproduction es false."
+                    "Priority based on delivery impact. "
+                    "Required when requires_postproduction is true. "
+                    "Omit this field when requires_postproduction is false."
                 ),
             },
             "ai_rationale": {
                 "type": "string",
                 "description": (
-                    "Explicación breve y concreta en español. "
-                    "Indica explícitamente si la decisión se basa en la NOTA, "
-                    "el FOTOGRAMA, el VIDEO o en una combinación de ellos."
+                    "Brief, specific explanation in natural English, regardless of the "
+                    "language of the director's note. Explicitly state whether the decision "
+                    "is based on the NOTE, the FRAME, the VIDEO, or a combination of them."
                 ),
             },
             "rejection_reason": {
                 "type": "string",
                 "description": (
-                    "Categoría de rechazo cuando requires_postproduction es false. "
-                    "Ejemplos: 'logística', 'catering', 'transporte', 'horarios', "
-                    "'felicitaciones', 'asunto no relacionado con postproducción'. "
-                    "Omite este campo cuando requires_postproduction es true."
+                    "Rejection category in natural English when requires_postproduction is false. "
+                    "Examples: 'logistics', 'catering', 'transportation', 'scheduling', "
+                    "'congratulations', 'matter unrelated to post-production'. "
+                    "Omit this field when requires_postproduction is true."
                 ),
             },
         },
@@ -102,84 +102,90 @@ _GENERATE_CONFIG = types.GenerateContentConfig(
 # ---------------------------------------------------------------------------
 
 _TEXT_ONLY_PROMPT = """\
-Eres el Ingestor Analítico de FrameFlow, una herramienta de postproducción cinematográfica.
+You are FrameFlow's Analytical Intake Assistant for film post-production.
 
-Primero decide si la nota requiere trabajo real de postproducción (VFX, color, sonido o edición).
-Notas de logística, catering, transporte, horarios, felicitaciones, conversaciones no relacionadas
-o cualquier pedido que no implique trabajo de VFX, color, sonido ni edición NO requieren postproducción.
+First, decide whether the note requires actual post-production work (VFX, color, sound, or editorial).
+Notes about logistics, catering, transportation, scheduling, congratulations, unrelated conversations,
+or any request that does not involve VFX, color, sound, or editorial work DO NOT require post-production.
 
-Si la nota SÍ requiere postproducción:
-  - Clasifícala en exactamente un departamento: vfx, color, sound o editorial.
-  - Asigna prioridad: low, medium, high o critical.
-  - Explica el motivo concreto en español.
+If the note DOES require post-production:
+  - Classify it into exactly one department: vfx, color, sound, or editorial.
+  - Assign a priority: low, medium, high, or critical.
+  - Explain the specific reason in natural English.
 
-Si la nota NO requiere postproducción:
-  - Indica la razón específica (ej. logística, catering, horarios, etc.).
-  - No inventes trabajo de postproducción donde no lo hay.
+If the note DOES NOT require post-production:
+  - Give the specific reason in natural English (for example, logistics, catering, or scheduling).
+  - Do not invent post-production work where none is requested.
 
-Toma: {shot_id}
-Nota del director: {director_note}
+Always write ai_rationale and rejection_reason in English, regardless of the language of the note.
+
+Shot: {shot_id}
+Director's note: {director_note}
 """
 
 _VIDEO_PROMPT = """\
-Eres el Ingestor Analítico de FrameFlow, una herramienta de postproducción cinematográfica.
-Se te proporciona una nota de dirección y un video de referencia de la toma.
+You are FrameFlow's Analytical Intake Assistant for film post-production.
+You are given a director's note and a reference video for the shot.
 
-Primero decide si la nota (y/o el video) requiere trabajo real de postproducción (VFX, color,
-sonido o edición). Notas de logística, catering, transporte, horarios, felicitaciones,
-conversaciones no relacionadas o cualquier pedido que no implique trabajo de VFX, color,
-sonido ni edición NO requieren postproducción.
+First, decide whether the note, the video, or both require actual post-production work (VFX, color,
+sound, or editorial). Notes about logistics, catering, transportation, scheduling, congratulations,
+unrelated conversations, or any request that does not involve VFX, color, sound, or editorial work
+DO NOT require post-production.
 
-Si SÍ requiere postproducción:
-  - Clasifícala en exactamente un departamento: vfx, color, sound o editorial.
-  - Asigna prioridad: low, medium, high o critical.
-  - En ai_rationale, indica si la decisión se basa en la NOTA, el VIDEO o en AMBOS,
-    y qué elemento concreto de cada fuente influyó en la decisión.
+If post-production IS required:
+  - Classify it into exactly one department: vfx, color, sound, or editorial.
+  - Assign a priority: low, medium, high, or critical.
+  - In ai_rationale, state whether the decision is based on the NOTE, the VIDEO, or BOTH,
+    and identify the specific element from each source that influenced the decision.
 
-Si NO requiere postproducción:
-  - Indica la razón específica.
-  - No inventes trabajo de postproducción.
+If post-production IS NOT required:
+  - Give the specific reason.
+  - Do not invent post-production work.
 
-Toma: {shot_id}
-Nota del director: {director_note}
+Always write ai_rationale and rejection_reason in English, regardless of the language of the note.
+
+Shot: {shot_id}
+Director's note: {director_note}
 """
 
 _MULTIMODAL_PROMPT = """\
-Eres el Ingestor Analítico de FrameFlow, una herramienta de postproducción cinematográfica.
-Se te proporciona una nota de dirección y el fotograma correspondiente a esa toma.
+You are FrameFlow's Analytical Intake Assistant for film post-production.
+You are given a director's note and the corresponding frame from that shot.
 
-Primero decide si la nota (y/o el fotograma) requiere trabajo real de postproducción (VFX, color,
-sonido o edición). Notas de logística, catering, transporte, horarios, felicitaciones, conversaciones
-no relacionadas o cualquier pedido que no implique trabajo de VFX, color, sonido ni edición
-NO requieren postproducción.
+First, decide whether the note, the frame, or both require actual post-production work (VFX, color,
+sound, or editorial). Notes about logistics, catering, transportation, scheduling, congratulations,
+unrelated conversations, or any request that does not involve VFX, color, sound, or editorial work
+DO NOT require post-production.
 
-Si SÍ requiere postproducción:
-  - Clasifícala en exactamente un departamento: vfx, color, sound o editorial.
-  - Asigna prioridad: low, medium, high o critical.
-  - En ai_rationale, indica si la decisión se basa en la NOTA, el FOTOGRAMA o en AMBOS.
+If post-production IS required:
+  - Classify it into exactly one department: vfx, color, sound, or editorial.
+  - Assign a priority: low, medium, high, or critical.
+  - In ai_rationale, state whether the decision is based on the NOTE, the FRAME, or BOTH.
 
-Si NO requiere postproducción:
-  - Indica la razón específica.
-  - No inventes trabajo de postproducción.
+If post-production IS NOT required:
+  - Give the specific reason.
+  - Do not invent post-production work.
 
-Toma: {shot_id}
-Nota del director: {director_note}
+Always write ai_rationale and rejection_reason in English, regardless of the language of the note.
+
+Shot: {shot_id}
+Director's note: {director_note}
 """
 
 
 class GeminiConfigurationError(Exception):
-    """Gemini no puede ejecutarse porque falta la configuración requerida."""
+    """Gemini cannot run because required configuration is missing."""
 
 
 class GeminiClassifier:
     def _create_client(self) -> genai.Client:
         """
-        Crea el cliente de Gemini según GEMINI_BACKEND:
+        Create the Gemini client according to GEMINI_BACKEND:
 
-        - "vertex_ai": usa Application Default Credentials (ADC) automáticamente.
-          Requiere GOOGLE_CLOUD_PROJECT y GOOGLE_CLOUD_LOCATION=global.
+        - "vertex_ai": automatically uses Application Default Credentials (ADC).
+          Requires GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION=global.
 
-        - "developer": usa GEMINI_API_KEY para desarrollo local.
+        - "developer": uses GEMINI_API_KEY for local development.
         """
         try:
             settings.validate_vertex_ai()
@@ -195,7 +201,7 @@ class GeminiClassifier:
 
         if not settings.gemini_api_key:
             raise GeminiConfigurationError(
-                "GEMINI_BACKEND=developer requiere GEMINI_API_KEY."
+                "GEMINI_BACKEND=developer requires GEMINI_API_KEY."
             )
         return genai.Client(api_key=settings.gemini_api_key)
 
@@ -217,7 +223,7 @@ class GeminiClassifier:
             None,
         )
         if function_call is None:
-            raise RuntimeError("Gemini no devolvió la llamada de función esperada.")
+            raise RuntimeError("Gemini did not return the expected function call.")
         return GeminiDecision.model_validate(function_call.args)
 
     def _decision_to_result(
@@ -234,7 +240,7 @@ class GeminiClassifier:
         # requires_postproduction=True: department and priority must be present.
         if decision.department is None or decision.priority is None:
             raise RuntimeError(
-                "Gemini indicó requires_postproduction=True pero omitió department o priority."
+                "Gemini returned requires_postproduction=True but omitted department or priority."
             )
 
         return TicketCreate(

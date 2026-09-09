@@ -72,7 +72,7 @@ export default function UserAvatar({
   return (
     <span
       className={`relative grid shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-gradient-to-br from-cyan-300/25 via-slate-800 to-violet-400/20 font-bold tracking-wide text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,.12)] ${sizeClass} ${className}`}
-      aria-label={`Foto de ${profile.display_name}`}
+      aria-label={`Photo of ${profile.display_name}`}
     >
       {visibleSource ? (
         // Firebase and the protected avatar endpoint are both runtime URLs.

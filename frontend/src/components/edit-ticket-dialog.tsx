@@ -45,15 +45,15 @@ export type Ticket = {
 const DEPT_OPTIONS: { value: Department; label: string }[] = [
   { value: "vfx",       label: "VFX" },
   { value: "color",     label: "Color" },
-  { value: "sound",     label: "Sonido" },
-  { value: "editorial", label: "Edición" },
+  { value: "sound",     label: "Sound" },
+  { value: "editorial", label: "Editorial" },
 ];
 
 const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
-  { value: "low",      label: "Baja" },
-  { value: "medium",   label: "Media" },
-  { value: "high",     label: "Alta" },
-  { value: "critical", label: "Crítica" },
+  { value: "low",      label: "Low" },
+  { value: "medium",   label: "Medium" },
+  { value: "high",     label: "High" },
+  { value: "critical", label: "Critical" },
 ];
 
 const apiBaseUrl =
@@ -138,7 +138,7 @@ export default function EditTicketDialog({
       setTimeout(() => setOpen(false), 900);
     } catch (err) {
       setSaveError(
-        err instanceof Error ? err.message : "No se pudo guardar. Inténtalo de nuevo."
+        err instanceof Error ? err.message : "Unable to save. Please try again."
       );
     } finally {
       setSaving(false);
@@ -151,7 +151,7 @@ export default function EditTicketDialog({
         className="action-button edit"
         disabled={saving}
       >
-        Editar
+        Edit
       </DialogTrigger>
 
       <DialogContent
@@ -159,11 +159,11 @@ export default function EditTicketDialog({
       >
         <DialogHeader>
           <DialogTitle className="text-white">
-            Editar ticket
+            Edit ticket
           </DialogTitle>
           <DialogDescription className="text-slate-400">
-            Los cambios mantienen el ticket en{" "}
-            <span className="text-cyan-300">Por revisar</span>.
+            Changes keep the ticket in{" "}
+            <span className="text-cyan-300">To review</span>.
           </DialogDescription>
         </DialogHeader>
 
@@ -175,7 +175,7 @@ export default function EditTicketDialog({
           </p>
           {ticket.ai_rationale && (
             <p className="mt-1 border-t border-slate-700 pt-2 text-xs text-slate-500">
-              <span className="font-semibold text-slate-400">IA: </span>
+              <span className="font-semibold text-slate-400">AI: </span>
               {ticket.ai_rationale}
             </p>
           )}
@@ -189,7 +189,7 @@ export default function EditTicketDialog({
               htmlFor={`edit-dept-${ticket.id}`}
               className="text-xs font-semibold uppercase tracking-wide text-slate-400"
             >
-              Departamento
+              Department
             </Label>
             <Select
               value={department}
@@ -217,7 +217,7 @@ export default function EditTicketDialog({
               htmlFor={`edit-prio-${ticket.id}`}
               className="text-xs font-semibold uppercase tracking-wide text-slate-400"
             >
-              Prioridad
+              Priority
             </Label>
             <Select
               value={priority}
@@ -246,13 +246,13 @@ export default function EditTicketDialog({
             htmlFor={`edit-note-${ticket.id}`}
             className="text-xs font-semibold uppercase tracking-wide text-slate-400"
           >
-            Nota del supervisor
+            Supervisor note
           </Label>
           <Textarea
             id={`edit-note-${ticket.id}`}
             value={supervisorNote}
             onChange={(e) => setSupervisorNote(e.target.value)}
-            placeholder="Añade contexto o instrucciones para el equipo…"
+            placeholder="Add context or instructions for the team…"
             maxLength={1000}
             rows={3}
             className="border-slate-600 bg-[#162337] text-slate-100 placeholder:text-slate-500"
@@ -265,7 +265,7 @@ export default function EditTicketDialog({
         )}
         {saved && !saveError && (
           <p className="text-xs text-cyan-300">
-            ✓ Cambios guardados. El ticket sigue en revisión.
+            ✓ Changes saved. The ticket remains under review.
           </p>
         )}
 
@@ -276,7 +276,7 @@ export default function EditTicketDialog({
             disabled={saving}
             className="action-button reject"
           >
-            Cancelar
+            Cancel
           </button>
           <button
             type="button"
@@ -284,7 +284,7 @@ export default function EditTicketDialog({
             disabled={saving}
             className="action-button approve"
           >
-            {saving ? "Guardando…" : "Guardar cambios"}
+            {saving ? "Saving…" : "Save changes"}
           </button>
         </DialogFooter>
       </DialogContent>

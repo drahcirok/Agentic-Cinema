@@ -15,7 +15,7 @@ export const firebaseIsConfigured = Boolean(
 );
 
 export function getFirebaseAuth() {
-  if (!firebaseIsConfigured) throw new Error("Firebase Authentication aún no está configurado.");
+  if (!firebaseIsConfigured) throw new Error("Firebase Authentication is not configured yet.");
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   return getAuth(app);
 }

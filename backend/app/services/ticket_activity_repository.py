@@ -69,5 +69,5 @@ def create_ticket_activity_repository(db: Session | None = None) -> TicketActivi
     if settings.is_firestore:
         return FirestoreTicketActivityRepository()
     if db is None:
-        raise RuntimeError("Se requiere una sesión SQLAlchemy para SQLite.")
+        raise RuntimeError("A SQLAlchemy session is required for SQLite.")
     return TicketActivityRepository(db)

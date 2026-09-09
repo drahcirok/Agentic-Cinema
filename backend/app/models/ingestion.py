@@ -35,7 +35,7 @@ class DirectorNoteIngestion(BaseModel):
     shot_id: str = Field(min_length=1, max_length=64, examples=["SC03-SH014"])
     director_note: str = Field(
         min_length=1,
-        examples=["Eliminar el micrófono y suavizar el brillo de la ventana."],
+        examples=["Remove the microphone and soften the window glare."],
     )
 
 
@@ -50,32 +50,32 @@ class GeminiDecision(BaseModel):
 
     requires_postproduction: bool = Field(
         description=(
-            "true si la nota requiere trabajo real de VFX, color, sonido o edición. "
-            "false para logística, catering, transporte, horarios, felicitaciones, "
-            "conversaciones no relacionadas con postproducción o cualquier pedido "
-            "que no implique trabajo de VFX, color, sonido ni edición."
+            "true when the note requires actual VFX, color, sound, or editorial work. "
+            "false for logistics, catering, transportation, scheduling, congratulations, "
+            "conversations unrelated to post-production, or any request that does not "
+            "involve VFX, color, sound, or editorial work."
         )
     )
     department: Department | None = Field(
         default=None,
-        description="Departamento principal. Obligatorio cuando requires_postproduction es true.",
+        description="Primary department. Required when requires_postproduction is true.",
     )
     priority: Priority | None = Field(
         default=None,
-        description="Prioridad según impacto en la entrega. Obligatorio cuando requires_postproduction es true.",
+        description="Priority based on delivery impact. Required when requires_postproduction is true.",
     )
     ai_rationale: str = Field(
         description=(
-            "Explicación breve en español. "
-            "Cuando se analiza un fotograma, indica si la decisión se basa "
-            "en la NOTA, el FOTOGRAMA o AMBOS."
+            "Brief explanation in English. "
+            "When a frame is analyzed, state whether the decision is based "
+            "on the NOTE, the FRAME, or BOTH."
         )
     )
     rejection_reason: str | None = Field(
         default=None,
         description=(
-            "Razón específica por la que la nota no requiere postproducción. "
-            "Solo presente cuando requires_postproduction es false."
+            "Specific reason why the note does not require post-production. "
+            "Only present when requires_postproduction is false."
         ),
     )
 

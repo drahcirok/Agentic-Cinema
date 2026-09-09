@@ -25,7 +25,7 @@ class MembershipStatus(StrEnum):
 
 
 class ProductionCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=100, examples=["Nebula - Postproducción"])
+    name: str = Field(min_length=2, max_length=100, examples=["Nebula - Post-production"])
 
 
 class ProductionUpdate(BaseModel):
@@ -39,7 +39,7 @@ class ProductionMemberCreate(BaseModel):
 
 
 class InvitationResponse(BaseModel):
-    decision: MembershipStatus = Field(description="Solo se aceptan los valores accepted o declined.")
+    decision: MembershipStatus = Field(description="Only accepted or declined are allowed.")
 
 
 class ProductionMember(ProductionMemberCreate):

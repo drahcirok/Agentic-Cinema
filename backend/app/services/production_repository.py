@@ -61,8 +61,8 @@ class ProductionRepository:
         existing = self.list_for_user(user_id)
         if existing:
             return existing[0]
-        label = display_name or (email.split("@", 1)[0] if email else "Mi producción")
-        return self.create(ProductionCreate(name=f"{label} · Producción"), user_id)
+        label = display_name or (email.split("@", 1)[0] if email else "My production")
+        return self.create(ProductionCreate(name=f"{label} · Production"), user_id)
 
     def _require_role(self, production_id: UUID, user_id: str, allowed: set[ProductionRole]) -> ProductionMemberRecord:
         membership = self._db.query(ProductionMemberRecord).filter_by(production_id=str(production_id), uid=user_id).one_or_none()
@@ -165,8 +165,8 @@ class FirestoreProductionRepository:
         existing = self.list_for_user(user_id)
         if existing:
             return existing[0]
-        label = display_name or (email.split("@", 1)[0] if email else "Mi producción")
-        return self.create(ProductionCreate(name=f"{label} · Producción"), user_id)
+        label = display_name or (email.split("@", 1)[0] if email else "My production")
+        return self.create(ProductionCreate(name=f"{label} · Production"), user_id)
 
     def _member(self, production_id: UUID, user_id: str) -> object:
         reference = self._collection().document(str(production_id))  # type: ignore[union-attr]
@@ -252,5 +252,5 @@ def create_production_repository(db: Session | None = None) -> ProductionDataRep
     if settings.is_firestore:
         return FirestoreProductionRepository()
     if db is None:
-        raise RuntimeError("Se requiere una sesión SQLAlchemy para SQLite.")
+        raise RuntimeError("A SQLAlchemy session is required for SQLite.")
     return ProductionRepository(db)

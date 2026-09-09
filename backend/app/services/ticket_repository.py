@@ -160,9 +160,9 @@ class TicketRepository:
         current = TicketStatus(record.status)
         if update.status is ArtistWorkStatus.IN_PROGRESS:
             if current not in {TicketStatus.ASSIGNED, TicketStatus.APPROVED, TicketStatus.IN_PROGRESS}:
-                raise TicketTransitionError("El ticket no está disponible para iniciar trabajo.")
+                raise TicketTransitionError("The ticket is not available to begin work.")
         elif current is not TicketStatus.IN_PROGRESS:
-            raise TicketTransitionError("Solo una tarea en proceso puede enviarse a control de calidad.")
+            raise TicketTransitionError("Only a task in progress can be submitted for quality control.")
 
         record.status = str(update.status)
         if update.artist_note is not None:
@@ -179,7 +179,7 @@ class TicketRepository:
         if record is None or not self._can_access(record, owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         if TicketStatus(record.status) is not TicketStatus.IN_PROGRESS:
-            raise TicketTransitionError("Solo una tarea en proceso puede recibir evidencia.")
+            raise TicketTransitionError("Evidence can only be attached to a task in progress.")
         record.evidence_gcs_uri = gs_uri
         record.evidence_name = name
         record.evidence_content_type = content_type
@@ -193,7 +193,7 @@ class TicketRepository:
         if record is None or not self._can_access(record, owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         if TicketStatus(record.status) is not TicketStatus.IN_PROGRESS:
-            raise TicketTransitionError("Solo se puede quitar evidencia de una tarea en proceso.")
+            raise TicketTransitionError("Evidence can only be removed from a task in progress.")
         record.evidence_gcs_uri = None
         record.evidence_name = None
         record.evidence_content_type = None
@@ -207,7 +207,7 @@ class TicketRepository:
         if record is None or not self._can_access(record, owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         if TicketStatus(record.status) is not TicketStatus.IN_PROGRESS:
-            raise TicketTransitionError("Solo se puede quitar el enlace de una tarea en proceso.")
+            raise TicketTransitionError("A delivery link can only be removed from a task in progress.")
         record.delivery_link = None
         record.updated_at = datetime.now(timezone.utc)
         self._db.commit()
@@ -219,7 +219,7 @@ class TicketRepository:
         if record is None or not self._can_access(record, owner_id, production_id):
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         if TicketStatus(record.status) is not TicketStatus.READY_FOR_QC:
-            raise TicketTransitionError("El ticket debe estar listo para revisión de calidad.")
+            raise TicketTransitionError("The ticket must be ready for quality review.")
 
         record.status = str(
             TicketStatus.COMPLETED if review.decision is QualityDecision.APPROVE else TicketStatus.IN_PROGRESS
@@ -391,9 +391,9 @@ class FirestoreTicketRepository:
         current = TicketStatus(str(data["status"]))
         if update.status is ArtistWorkStatus.IN_PROGRESS:
             if current not in {TicketStatus.ASSIGNED, TicketStatus.APPROVED, TicketStatus.IN_PROGRESS}:
-                raise TicketTransitionError("El ticket no está disponible para iniciar trabajo.")
+                raise TicketTransitionError("The ticket is not available to begin work.")
         elif current is not TicketStatus.IN_PROGRESS:
-            raise TicketTransitionError("Solo una tarea en proceso puede enviarse a control de calidad.")
+            raise TicketTransitionError("Only a task in progress can be submitted for quality control.")
 
         changes: dict[str, object] = {"status": str(update.status), "updated_at": datetime.now(timezone.utc)}
         if update.artist_note is not None:
@@ -411,7 +411,7 @@ class FirestoreTicketRepository:
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         data = snapshot.to_dict()
         if TicketStatus(str(data["status"])) is not TicketStatus.IN_PROGRESS:
-            raise TicketTransitionError("Solo una tarea en proceso puede recibir evidencia.")
+            raise TicketTransitionError("Evidence can only be attached to a task in progress.")
         changes: dict[str, object] = {
             "evidence_gcs_uri": gs_uri,
             "evidence_name": name,
@@ -429,7 +429,7 @@ class FirestoreTicketRepository:
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         data = snapshot.to_dict()
         if TicketStatus(str(data["status"])) is not TicketStatus.IN_PROGRESS:
-            raise TicketTransitionError("Solo se puede quitar evidencia de una tarea en proceso.")
+            raise TicketTransitionError("Evidence can only be removed from a task in progress.")
         changes: dict[str, object] = {
             "evidence_gcs_uri": None,
             "evidence_name": None,
@@ -447,7 +447,7 @@ class FirestoreTicketRepository:
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         data = snapshot.to_dict()
         if TicketStatus(str(data["status"])) is not TicketStatus.IN_PROGRESS:
-            raise TicketTransitionError("Solo se puede quitar el enlace de una tarea en proceso.")
+            raise TicketTransitionError("A delivery link can only be removed from a task in progress.")
         changes: dict[str, object] = {"delivery_link": None, "updated_at": datetime.now(timezone.utc)}
         reference.update(changes)
         data.update(changes)
@@ -460,7 +460,7 @@ class FirestoreTicketRepository:
             raise TicketNotFoundError(f"Ticket {ticket_id} not found")
         data = snapshot.to_dict()
         if TicketStatus(str(data["status"])) is not TicketStatus.READY_FOR_QC:
-            raise TicketTransitionError("El ticket debe estar listo para revisión de calidad.")
+            raise TicketTransitionError("The ticket must be ready for quality review.")
 
         changes: dict[str, object] = {
             "status": str(TicketStatus.COMPLETED if review.decision is QualityDecision.APPROVE else TicketStatus.IN_PROGRESS),
@@ -522,5 +522,5 @@ def create_ticket_repository(db: Session | None = None) -> TicketDataRepository:
     if settings.is_firestore:
         return FirestoreTicketRepository()
     if db is None:
-        raise RuntimeError("Se requiere una sesión SQLAlchemy para SQLite.")
+        raise RuntimeError("A SQLAlchemy session is required for SQLite.")
     return TicketRepository(db)

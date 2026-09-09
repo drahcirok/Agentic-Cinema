@@ -99,28 +99,28 @@ const activeProductionStorageKey = "frameflow:active-production";
 const departmentLabel: Record<Department, string> = {
   vfx: "VFX",
   color: "Color",
-  sound: "Sonido",
-  editorial: "Edición",
+  sound: "Sound",
+  editorial: "Editorial",
 };
 const priorityLabel: Record<Priority, string> = {
-  low: "Baja",
-  medium: "Media",
-  high: "Alta",
-  critical: "Crítica",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  critical: "Critical",
 };
 const roleLabel: Record<ProductionMember["role"], string> = {
-  producer: "Productor",
+  producer: "Producer",
   supervisor: "Supervisor",
-  artist: "Artista",
+  artist: "Artist",
 };
 const statusLabel: Record<TicketStatus, string> = {
-  pending_review: "Por revisar",
-  assigned: "Asignada",
-  approved: "Asignada",
-  in_progress: "En proceso",
-  ready_for_qc: "Lista para QC",
-  completed: "Completada",
-  rejected: "Rechazada",
+  pending_review: "Pending review",
+  assigned: "Assigned",
+  approved: "Assigned",
+  in_progress: "In progress",
+  ready_for_qc: "Ready for QC",
+  completed: "Completed",
+  rejected: "Rejected",
 };
 
 function memberDisplayName(member: ProductionMember): string {
@@ -146,7 +146,7 @@ async function fetchTickets(
       ? { ...headers, "X-Production-Id": productionId }
       : headers,
   });
-  if (!response.ok) throw new Error("No se pudieron cargar los tickets.");
+  if (!response.ok) throw new Error("Could not load the tickets.");
   return response.json();
 }
 
@@ -154,7 +154,7 @@ async function fetchProductions(
   headers: Record<string, string>,
 ): Promise<Production[]> {
   const response = await fetch(`${apiBaseUrl}/productions`, { headers });
-  if (!response.ok) throw new Error("No se pudieron cargar tus producciones.");
+  if (!response.ok) throw new Error("Could not load your productions.");
   return response.json();
 }
 
@@ -164,7 +164,7 @@ async function fetchInvitations(
   const response = await fetch(`${apiBaseUrl}/productions/invitations`, {
     headers,
   });
-  if (!response.ok) throw new Error("No se pudieron cargar tus invitaciones.");
+  if (!response.ok) throw new Error("Could not load your invitations.");
   return response.json();
 }
 
@@ -172,7 +172,7 @@ async function fetchNotifications(
   headers: Record<string, string>,
 ): Promise<AppNotification[]> {
   const response = await fetch(`${apiBaseUrl}/notifications`, { headers });
-  if (!response.ok) throw new Error("No se pudieron cargar tus notificaciones.");
+  if (!response.ok) throw new Error("Could not load your notifications.");
   return response.json();
 }
 
@@ -184,7 +184,7 @@ async function fetchTicketActivity(
   const response = await fetch(`${apiBaseUrl}/tickets/${ticketId}/activity`, {
     headers: { ...headers, "X-Production-Id": productionId },
   });
-  if (!response.ok) throw new Error("No se pudo cargar la actividad de la tarea.");
+  if (!response.ok) throw new Error("Could not load the task activity.");
   return response.json();
 }
 
@@ -197,7 +197,7 @@ async function fetchMembers(
     { headers },
   );
   if (!response.ok)
-    throw new Error("No se pudo cargar el equipo de producción.");
+    throw new Error("Could not load the production team.");
   return response.json();
 }
 
@@ -205,7 +205,7 @@ async function fetchCurrentProfile(
   headers: Record<string, string>,
 ): Promise<UserProfile> {
   const response = await fetch(`${apiBaseUrl}/profiles/me`, { headers });
-  if (!response.ok) throw new Error("No se pudo cargar tu perfil.");
+  if (!response.ok) throw new Error("Could not load your profile.");
   return response.json();
 }
 
@@ -239,7 +239,7 @@ function TicketCard({
       {ticket.artist_note && (
         <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 px-3 py-2 text-xs text-slate-300">
           <span className="font-semibold text-cyan-300">
-            Nota del artista:{" "}
+            Artist note:{" "}
           </span>
           {ticket.artist_note}
         </div>
@@ -254,14 +254,14 @@ function TicketCard({
                 rel="noreferrer"
                 className="rounded-md border border-cyan-400/30 px-2 py-1 font-semibold text-cyan-300 hover:bg-cyan-400/10"
               >
-                Abrir enlace de entrega
+                Open delivery link
               </a>
               {onRemoveDeliveryLink && (
                 <button
                   onClick={() => onRemoveDeliveryLink(ticket)}
                   className="rounded-md border border-rose-400/30 px-2 py-1 font-semibold text-rose-200 hover:bg-rose-400/10"
                 >
-                  Quitar enlace
+                  Remove link
                 </button>
               )}
             </>
@@ -274,7 +274,7 @@ function TicketCard({
               onClick={() => onRemoveEvidence(ticket)}
               className="rounded-md border border-rose-400/30 px-2 py-1 font-semibold text-rose-200 hover:bg-rose-400/10"
             >
-              Quitar evidencia
+              Remove evidence
             </button>
           )}
         </div>
@@ -282,7 +282,7 @@ function TicketCard({
       {ticket.supervisor_feedback && (
         <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-slate-300">
           <span className="font-semibold text-amber-300">
-            Feedback del supervisor:{" "}
+            Supervisor feedback:{" "}
           </span>
           {ticket.supervisor_feedback}
         </div>
@@ -292,7 +292,7 @@ function TicketCard({
           onClick={() => onViewActivity(ticket)}
           className="mt-3 text-xs font-semibold text-cyan-300 hover:underline"
         >
-          Ver actividad
+          View activity
         </button>
       )}
       {children && (
@@ -317,7 +317,7 @@ function EvidenceButton({ ticket }: { ticket: Ticket }) {
           ? { ...(await getAuthHeaders()), "X-Production-Id": ticket.production_id }
           : await getAuthHeaders(),
       });
-      if (!response.ok) throw new Error("No se pudo abrir la evidencia.");
+      if (!response.ok) throw new Error("Could not open the evidence.");
       const url = URL.createObjectURL(await response.blob());
       window.open(url, "_blank", "noopener,noreferrer");
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -328,7 +328,7 @@ function EvidenceButton({ ticket }: { ticket: Ticket }) {
 
   return (
     <button onClick={() => void openEvidence()} className="rounded-md border border-violet-400/30 px-2 py-1 font-semibold text-violet-200 hover:bg-violet-400/10">
-      {opening ? "Abriendo…" : `Ver evidencia${ticket.evidence_name ? `: ${ticket.evidence_name}` : ""}`}
+      {opening ? "Opening…" : `View evidence${ticket.evidence_name ? `: ${ticket.evidence_name}` : ""}`}
     </button>
   );
 }
@@ -363,7 +363,7 @@ function TicketColumn({
         ))}
         {!loading && tickets.length === 0 && (
           <p className="rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-500">
-            Sin tickets en esta columna.
+            No tickets in this column.
           </p>
         )}
         {tickets.map(children)}
@@ -390,7 +390,7 @@ function NotificationBell({
     <div className="relative z-40" onKeyDown={(event) => { if (event.key === "Escape" && open) onToggle(); }}>
       <button
         onClick={onToggle}
-        aria-label="Ver notificaciones"
+        aria-label="View notifications"
         aria-haspopup="dialog"
         aria-expanded={open}
         className="group relative grid h-11 w-11 place-items-center rounded-full border border-slate-700/70 bg-slate-950/45 text-slate-300 shadow-lg backdrop-blur transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:text-cyan-200"
@@ -404,19 +404,19 @@ function NotificationBell({
       </button>
       {open && (
         <>
-        <button type="button" aria-label="Cerrar notificaciones" className="fixed inset-0 z-[-1] cursor-default" onClick={onToggle} />
-        <section role="dialog" aria-label="Notificaciones" className="absolute right-0 z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-700 bg-[#101b2b] shadow-2xl landing-rise">
+        <button type="button" aria-label="Close notifications" className="fixed inset-0 z-[-1] cursor-default" onClick={onToggle} />
+        <section role="dialog" aria-label="Notifications" className="absolute right-0 z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-700 bg-[#101b2b] shadow-2xl landing-rise">
           <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
-            <p className="text-sm font-semibold text-white">Notificaciones</p>
+            <p className="text-sm font-semibold text-white">Notifications</p>
             {unread > 0 && (
               <button onClick={onReadAll} className="text-xs font-semibold text-cyan-300 hover:underline">
-                Marcar leídas
+                Mark all as read
               </button>
             )}
           </div>
           <div className="max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
-              <p className="p-4 text-sm text-slate-500">No tienes notificaciones.</p>
+              <p className="p-4 text-sm text-slate-500">You have no notifications.</p>
             ) : notifications.map((notification) => (
               <button
                 key={notification.id}
@@ -511,7 +511,7 @@ function Workspace() {
     try {
       setTickets(await fetchTickets(await getAuthHeaders(), production?.id));
     } catch {
-      setError("No se pudo conectar con el backend. Inténtalo de nuevo.");
+      setError("Could not connect to the backend. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -567,7 +567,7 @@ function Workspace() {
         }
       } catch {
         if (current)
-          setError("No se pudo conectar con el backend. Inténtalo de nuevo.");
+          setError("Could not connect to the backend. Please try again.");
       } finally {
         if (current) setLoading(false);
       }
@@ -673,7 +673,7 @@ function Workspace() {
         await fetchTicketActivity(await getAuthHeaders(), production.id, ticket.id),
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo cargar la actividad.");
+      setError(cause instanceof Error ? cause.message : "Could not load the activity.");
     } finally {
       setActivityLoading(false);
     }
@@ -687,7 +687,7 @@ function Workspace() {
     setProcessingId(ticketId);
     setError(null);
     try {
-      if (!production) throw new Error("No hay una producción activa.");
+      if (!production) throw new Error("There is no active production.");
       const response = await fetch(
         `${apiBaseUrl}/tickets/${ticketId}/${endpoint}`,
         {
@@ -702,7 +702,7 @@ function Workspace() {
       );
       const data = await response.json();
       if (!response.ok)
-        throw new Error(data.detail ?? "No se pudo actualizar el ticket.");
+        throw new Error(data.detail ?? "Could not update the ticket.");
       setTickets((current) =>
         current.map((ticket) =>
           ticket.id === ticketId ? (data as Ticket) : ticket,
@@ -713,7 +713,7 @@ function Workspace() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "No se pudo actualizar el ticket.",
+          : "Could not update the ticket.",
       );
     } finally {
       setProcessingId(null);
@@ -724,7 +724,7 @@ function Workspace() {
   async function addMember(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!production || !selectedMember) {
-      setError("Selecciona una persona de los resultados antes de continuar.");
+      setError("Select a person from the results before continuing.");
       return;
     }
     setError(null);
@@ -746,7 +746,7 @@ function Workspace() {
       );
       const created = await response.json();
       if (!response.ok)
-        throw new Error(created.detail ?? "No se pudo agregar al miembro.");
+        throw new Error(created.detail ?? "Could not add the member.");
       setMembers((current) => [
         ...current.filter((member) => member.uid !== created.uid),
         created as ProductionMember,
@@ -759,7 +759,7 @@ function Workspace() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "No se pudo gestionar el miembro.",
+          : "Could not manage the member.",
       );
     }
   }
@@ -769,7 +769,7 @@ function Workspace() {
     setSelectedMember({
       uid: member.uid,
       username: member.username ?? member.uid.slice(0, 12),
-      display_name: member.display_name ?? "Integrante de FrameFlow",
+      display_name: member.display_name ?? "FrameFlow member",
       photo_url: member.photo_url,
       has_custom_avatar: Boolean(member.has_custom_avatar),
       created_at: "",
@@ -784,7 +784,7 @@ function Workspace() {
     try {
       setMembers(await fetchMembers(await getAuthHeaders(), production.id));
     } catch {
-      setError("No se pudo actualizar el equipo.");
+      setError("Could not refresh the team.");
     }
   }
 
@@ -798,7 +798,7 @@ function Workspace() {
       );
       if (!response.ok) {
         const detail = await response.json();
-        throw new Error(detail.detail ?? "No se pudo retirar al miembro.");
+        throw new Error(detail.detail ?? "Could not remove the member.");
       }
       setMembers((current) =>
         current.filter((item) => item.uid !== member.uid),
@@ -808,7 +808,7 @@ function Workspace() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "No se pudo retirar al miembro.",
+          : "Could not remove the member.",
       );
     }
   }
@@ -832,7 +832,7 @@ function Workspace() {
         setDepartmentFilter(ownMembership.department);
       setView(ownMembership?.role === "artist" ? "production" : "decisions");
     } catch {
-      setError("No se pudo cambiar de producción. Inténtalo de nuevo.");
+      setError("Could not switch productions. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -859,7 +859,7 @@ function Workspace() {
       });
       const created = await response.json();
       if (!response.ok)
-        throw new Error(created.detail ?? "No se pudo crear la producción.");
+        throw new Error(created.detail ?? "Could not create the production.");
       const next = created as Production;
       setProductions((current) => [next, ...current]);
       setNewProductionName("");
@@ -868,7 +868,7 @@ function Workspace() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "No se pudo crear la producción.",
+          : "Could not create the production.",
       );
     }
   }
@@ -894,7 +894,7 @@ function Workspace() {
       const result = await response.json();
       if (!response.ok)
         throw new Error(
-          result.detail ?? "No se pudo responder a la invitación.",
+          result.detail ?? "Could not respond to the invitation.",
         );
       setInvitations((current) =>
         current.filter(
@@ -907,7 +907,7 @@ function Workspace() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "No se pudo responder a la invitación.",
+          : "Could not respond to the invitation.",
       );
     }
   }
@@ -931,7 +931,7 @@ function Workspace() {
       const updated = await response.json();
       if (!response.ok)
         throw new Error(
-          updated.detail ?? "No se pudo renombrar la producción.",
+          updated.detail ?? "Could not rename the production.",
         );
       setProductions((current) =>
         current.map((item) =>
@@ -945,7 +945,7 @@ function Workspace() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "No se pudo renombrar la producción.",
+          : "Could not rename the production.",
       );
     }
   }
@@ -977,7 +977,7 @@ function Workspace() {
       body: form,
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.detail ?? "No se pudo subir la evidencia.");
+    if (!response.ok) throw new Error(data.detail ?? "Could not upload the evidence.");
     setTickets((current) => current.map((item) => item.id === ticketId ? (data as Ticket) : item));
     return true;
   }
@@ -991,11 +991,11 @@ function Workspace() {
         headers: { ...(await getAuthHeaders()), "X-Production-Id": production.id },
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail ?? "No se pudo quitar la evidencia.");
+      if (!response.ok) throw new Error(data.detail ?? "Could not remove the evidence.");
       setTickets((current) => current.map((item) => item.id === ticket.id ? (data as Ticket) : item));
       setEvidenceToRemove(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo quitar la evidencia.");
+      setError(cause instanceof Error ? cause.message : "Could not remove the evidence.");
     } finally {
       setProcessingId(null);
     }
@@ -1010,11 +1010,11 @@ function Workspace() {
         headers: { ...(await getAuthHeaders()), "X-Production-Id": production.id },
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail ?? "No se pudo quitar el enlace.");
+      if (!response.ok) throw new Error(data.detail ?? "Could not remove the link.");
       setTickets((current) => current.map((item) => item.id === ticket.id ? (data as Ticket) : item));
       setDeliveryLinkToRemove(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo quitar el enlace.");
+      setError(cause instanceof Error ? cause.message : "Could not remove the link.");
     } finally {
       setProcessingId(null);
     }
@@ -1024,12 +1024,12 @@ function Workspace() {
     const { ticket, type } = workflowAction;
     if (type === "return_for_rework" && !workflowNote.trim()) {
       setError(
-        "Explica al artista qué debe corregir antes de devolver la tarea.",
+        "Explain what the artist must correct before returning the task.",
       );
       return;
     }
     if (type === "assign" && !assignedArtistId) {
-      setError("Selecciona un artista para asignar esta tarea.");
+      setError("Select an artist to assign this task.");
       return;
     }
     const artist = members.find((member) => member.uid === assignedArtistId);
@@ -1041,7 +1041,7 @@ function Workspace() {
             decision: "approve",
             assigned_to_uid: assignedArtistId,
             assigned_to_name:
-              artist ? memberDisplayName(artist) : "Artista",
+              artist ? memberDisplayName(artist) : "Artist",
           })
         : type === "send_qc"
           ? await updateTicket(ticket.id, "work", {
@@ -1055,7 +1055,7 @@ function Workspace() {
             });
     if (ok) setWorkflowAction(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo guardar la entrega.");
+      setError(cause instanceof Error ? cause.message : "Could not save the delivery.");
     }
   }
 
@@ -1158,13 +1158,13 @@ function Workspace() {
   if (authLoading)
     return (
       <main className="grid min-h-screen place-items-center bg-[#09111d] text-slate-300">
-        Comprobando sesión…
+        Checking your session…
       </main>
     );
   if (!configured)
     return (
       <main className="grid min-h-screen place-items-center bg-[#09111d] p-6 text-center text-slate-300">
-        Firebase Authentication aún no está configurado para este entorno.
+        Firebase Authentication is not configured for this environment yet.
       </main>
     );
   if (!user)
@@ -1177,7 +1177,7 @@ function Workspace() {
         ?.split("@", 1)[0]
         .toLowerCase()
         .replace(/[^a-z0-9._-]/g, "-") || `user-${user.uid.slice(-6).toLowerCase()}`,
-    display_name: user.displayName ?? user.email?.split("@", 1)[0] ?? "Usuario de FrameFlow",
+    display_name: user.displayName ?? user.email?.split("@", 1)[0] ?? "FrameFlow user",
     photo_url: user.photoURL,
     has_custom_avatar: false,
     created_at: "",
@@ -1185,31 +1185,31 @@ function Workspace() {
   };
   const workspaceCopy: Record<View, { eyebrow: string; title: string; description: string }> = {
     dashboard: {
-      eyebrow: "PRODUCCIÓN / PULSO EN VIVO",
-      title: "Resumen de producción",
-      description: "El avance del equipo, las cargas y los cuellos de botella en una sola mirada.",
+      eyebrow: "PRODUCTION / LIVE PULSE",
+      title: "Production overview",
+      description: "Team progress, workloads, and bottlenecks at a glance.",
     },
     decisions: {
-      eyebrow: "FRAMEFLOW / CONTROL CREATIVO",
-      title: "Sala de decisiones",
-      description: "Del análisis con Gemini a una decisión humana clara y asignable.",
+      eyebrow: "FRAMEFLOW / CREATIVE CONTROL",
+      title: "Decision room",
+      description: "From Gemini analysis to a clear, assignable human decision.",
     },
     production: {
-      eyebrow: "PRODUCCIÓN / EJECUCIÓN",
-      title: canWork ? "Mi espacio de trabajo" : "Área de producción",
+      eyebrow: "PRODUCTION / EXECUTION",
+      title: canWork ? "My workspace" : "Production area",
       description: canWork
-        ? "Tus tareas, entregables y revisiones sin ruido operativo."
-        : "Sigue el trabajo creativo desde la asignación hasta control de calidad.",
+        ? "Your tasks, deliveries, and reviews without operational noise."
+        : "Track creative work from assignment through quality control.",
     },
     team: {
-      eyebrow: "PRODUCCIÓN / PERSONAS",
-      title: "Equipo de producción",
-      description: "Invita identidades verificadas y define cómo participa cada persona.",
+      eyebrow: "PRODUCTION / PEOPLE",
+      title: "Production team",
+      description: "Invite verified identities and define how each person participates.",
     },
     history: {
-      eyebrow: "PRODUCCIÓN / TRAZABILIDAD",
-      title: "Historial de entregas",
-      description: "Cada cierre, rechazo y decisión conserva su contexto.",
+      eyebrow: "PRODUCTION / TRACEABILITY",
+      title: "Delivery history",
+      description: "Every completion, rejection, and decision keeps its context.",
     },
   };
 
@@ -1226,16 +1226,16 @@ function Workspace() {
                 FRAMEFLOW / PRODUCTIONS
               </p>
               <h1 className="text-4xl font-semibold tracking-tight text-white">
-                Tus producciones
+                Your productions
               </h1>
               <p className="mt-3 max-w-xl text-slate-400">
-                Elige una producción, responde tus invitaciones o crea una nueva
-                sala de postproducción.
+                Choose a production, respond to your invitations, or create a new
+                post-production room.
               </p>
               <p className="mt-3 text-xs text-slate-500">
-                Tu identidad:{" "}
+                Your identity:{" "}
                 <span className="font-semibold text-cyan-300">@{profile.username}</span>
-                <span className="ml-2">· el UID se copia desde tu perfil</span>
+                <span className="ml-2">· copy your UID from your profile</span>
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -1257,9 +1257,9 @@ function Workspace() {
           <section className="workspace-panel mb-8 rounded-2xl border border-cyan-400/20 bg-[#101b2b]/90 p-5 backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="font-semibold text-white">Crear producción</h2>
+                <h2 className="font-semibold text-white">Create production</h2>
                 <p className="mt-1 text-sm text-slate-400">
-                  Serás productor y podrás invitar al equipo.
+                  You will be the producer and can invite your team.
                 </p>
               </div>
             </div>
@@ -1272,11 +1272,11 @@ function Workspace() {
                 maxLength={100}
                 value={newProductionName}
                 onChange={(event) => setNewProductionName(event.target.value)}
-                placeholder="Ej. Nebula · Postproducción"
+                placeholder="E.g. Nebula · Post-production"
                 className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300"
               />
               <button className="rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950">
-                Crear producción
+                Create production
               </button>
             </form>
           </section>
@@ -1287,7 +1287,7 @@ function Workspace() {
                   ●
                 </span>
                 <h2 className="font-semibold text-white">
-                  Invitaciones pendientes ({invitations.length})
+                  Pending invitations ({invitations.length})
                 </h2>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -1297,12 +1297,12 @@ function Workspace() {
                     className="workspace-card overflow-hidden rounded-2xl border border-amber-400/30 bg-amber-400/5"
                   >
                     <div className="border-b border-amber-300/10 bg-gradient-to-r from-amber-300/10 via-transparent to-cyan-300/5 p-5">
-                      <p className="text-[10px] font-bold tracking-[.2em] text-amber-300">INVITACIÓN A PRODUCCIÓN</p>
+                      <p className="text-[10px] font-bold tracking-[.2em] text-amber-300">PRODUCTION INVITATION</p>
                       <p className="mt-2 text-lg font-semibold text-white">
-                        {invitation.production_name ?? "Producción compartida"}
+                        {invitation.production_name ?? "Shared production"}
                       </p>
                       <p className="mt-1 text-sm text-slate-400">
-                        Te proponen entrar como <span className="font-semibold text-slate-200">{roleLabel[invitation.role]}</span>
+                        You have been invited as <span className="font-semibold text-slate-200">{roleLabel[invitation.role]}</span>
                         {invitation.department
                           ? ` · ${departmentLabel[invitation.department]}`
                           : ""}
@@ -1313,13 +1313,13 @@ function Workspace() {
                         <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/15 p-3">
                           <UserAvatar profile={invitation.invited_by} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} size="lg" />
                           <div className="min-w-0">
-                            <p className="text-[10px] font-bold tracking-[.14em] text-slate-500">TE INVITA</p>
+                            <p className="text-[10px] font-bold tracking-[.14em] text-slate-500">INVITED BY</p>
                             <p className="mt-1 truncate text-sm font-semibold text-white">{invitation.invited_by.display_name}</p>
                             <p className="truncate text-xs text-cyan-300">@{invitation.invited_by.username}</p>
                           </div>
                         </div>
                       ) : (
-                        <p className="rounded-xl border border-white/5 bg-black/15 p-3 text-xs text-slate-400">Invitación enviada por el productor de esta producción.</p>
+                        <p className="rounded-xl border border-white/5 bg-black/15 p-3 text-xs text-slate-400">Invitation sent by this production&apos;s producer.</p>
                       )}
                     <div className="mt-4 flex gap-2">
                       <button
@@ -1328,7 +1328,7 @@ function Workspace() {
                         }
                         className="action-button approve"
                       >
-                        Aceptar
+                        Accept
                       </button>
                       <button
                         onClick={() =>
@@ -1336,7 +1336,7 @@ function Workspace() {
                         }
                         className="action-button reject"
                       >
-                        Rechazar
+                        Decline
                       </button>
                     </div>
                     </div>
@@ -1347,14 +1347,14 @@ function Workspace() {
           )}
           <section>
             <h2 className="mb-3 font-semibold text-white">
-              Producciones disponibles
+              Available productions
             </h2>
             {loading ? (
-              <p className="text-sm text-slate-400">Cargando producciones…</p>
+              <p className="text-sm text-slate-400">Loading productions…</p>
             ) : productions.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-700 p-6 text-sm text-slate-500">
-                Aún no perteneces a ninguna producción. Crea una o espera una
-                invitación.
+                You do not belong to any production yet. Create one or wait for
+                an invitation.
               </p>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
@@ -1372,7 +1372,7 @@ function Workspace() {
                           {item.name}
                         </p>
                         <p className="mt-1 text-sm capitalize text-slate-400">
-                          Tu rol: {item.current_user_role}
+                          Your role: {item.current_user_role ? roleLabel[item.current_user_role] : "Member"}
                         </p>
                       </button>
                       {item.current_user_role === "producer" && (
@@ -1383,7 +1383,7 @@ function Workspace() {
                           }}
                           className="text-xs text-cyan-300 hover:underline"
                         >
-                          Renombrar
+                          Rename
                         </button>
                       )}
                     </div>
@@ -1399,7 +1399,7 @@ function Workspace() {
                 className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#101b2b] p-6"
               >
                 <h2 className="text-lg font-semibold text-white">
-                  Renombrar producción
+                  Rename production
                 </h2>
                 <input
                   autoFocus
@@ -1415,9 +1415,9 @@ function Workspace() {
                     onClick={() => setRenamingProductionId(null)}
                     className="action-button reject"
                   >
-                    Cancelar
+                    Cancel
                   </button>
-                  <button className="action-button approve">Guardar</button>
+                  <button className="action-button approve">Save</button>
                 </div>
               </form>
             </div>
@@ -1455,7 +1455,7 @@ function Workspace() {
             <ProfileMenu profile={profile} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} onProfileChange={setCurrentProfile} onSignOut={signOut} />
             <div className="workspace-metric rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-5 py-3 backdrop-blur">
               <p className="text-xs font-medium uppercase tracking-wider text-cyan-200">
-                Por revisar
+                Pending review
               </p>
               <p className="mt-1 text-3xl font-semibold text-white">
                 {pending.length}
@@ -1472,12 +1472,12 @@ function Workspace() {
               }}
               className="workspace-nav-button mb-3 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-cyan-300"
             >
-              <ArrowLeft className="h-4 w-4" /> <span>Producciones</span>
+              <ArrowLeft className="h-4 w-4" /> <span>Productions</span>
             </button>
             <label className="mb-4 block border-b border-slate-700 pb-4 text-xs text-slate-500">
-              Producción activa
+              Active production
               <select
-                aria-label="Producción activa"
+                aria-label="Active production"
                 value={production.id}
                 onChange={(event) => void selectProduction(event.target.value)}
                 className="mt-2 w-full rounded-lg border border-slate-600 bg-[#162337] px-2 py-2 text-xs text-slate-200 outline-none"
@@ -1492,7 +1492,7 @@ function Workspace() {
                   ))}
               </select>
             </label>
-            <nav className="space-y-1" aria-label="Vistas de FrameFlow">
+            <nav className="space-y-1" aria-label="FrameFlow views">
               {production.current_user_role === "producer" && (
                 <button
                   onClick={() => setView("dashboard")}
@@ -1502,7 +1502,7 @@ function Workspace() {
                       : "workspace-nav-button w-full"
                   }
                 >
-                  <LayoutDashboard className="h-4 w-4" /> Resumen
+                  <LayoutDashboard className="h-4 w-4" /> Overview
                 </button>
               )}
               {canSupervise && (
@@ -1514,7 +1514,7 @@ function Workspace() {
                       : "workspace-nav-button w-full"
                   }
                 >
-                  <Sparkles className="h-4 w-4" /> Sala de decisiones
+                  <Sparkles className="h-4 w-4" /> Decision room
                 </button>
               )}
               <button
@@ -1525,7 +1525,7 @@ function Workspace() {
                     : "workspace-nav-button w-full"
                 }
               >
-                <ListChecks className="h-4 w-4" /> {canWork ? "Mis tareas" : "Tareas"}
+                <ListChecks className="h-4 w-4" /> {canWork ? "My tasks" : "Tasks"}
               </button>
               {production.current_user_role === "producer" && (
                 <button
@@ -1539,7 +1539,7 @@ function Workspace() {
                       : "workspace-nav-button w-full"
                   }
                 >
-                  <UsersRound className="h-4 w-4" /> Gestionar equipo
+                  <UsersRound className="h-4 w-4" /> Manage team
                 </button>
               )}
               <button
@@ -1550,7 +1550,7 @@ function Workspace() {
                     : "workspace-nav-button w-full"
                 }
               >
-                <History className="h-4 w-4" /> Historial
+                <History className="h-4 w-4" /> History
               </button>
             </nav>
           </aside>
@@ -1563,9 +1563,9 @@ function Workspace() {
                   className="underline underline-offset-4"
                   onClick={() => void loadTickets()}
                 >
-                  Reintentar
+                  Retry
                 </button>
-                  <button aria-label="Cerrar mensaje de error" onClick={() => setError(null)} className="text-lg leading-none hover:text-white">×</button>
+                  <button aria-label="Close error message" onClick={() => setError(null)} className="text-lg leading-none hover:text-white">×</button>
                 </div>
               </div>
             )}
@@ -1579,8 +1579,8 @@ function Workspace() {
                 />
                 <section className="grid gap-6 lg:grid-cols-2">
                   <TicketColumn
-                    title="Por revisar"
-                    description="Notas que requieren decisión del supervisor"
+                    title="Pending review"
+                    description="Notes that require a supervisor decision"
                     tickets={pending}
                     loading={loading}
                   >
@@ -1591,7 +1591,7 @@ function Workspace() {
                           onClick={() => reviewTicket(ticket.id, "reject")}
                           className="action-button reject"
                         >
-                          Rechazar
+                          Reject
                         </button>
                         <EditTicketDialog
                           productionId={production.id}
@@ -1609,14 +1609,14 @@ function Workspace() {
                           onClick={() => openWorkflowAction(ticket, "assign")}
                           className="action-button approve"
                         >
-                          Aprobar y asignar
+                          Approve and assign
                         </button>
                       </TicketCard>
                     )}
                   </TicketColumn>
                   <TicketColumn
-                    title="Control de calidad"
-                    description="Trabajo enviado por artistas para revisión final"
+                    title="Quality control"
+                    description="Work submitted by artists for final review"
                     tickets={qualityQueue}
                     loading={loading}
                   >
@@ -1629,14 +1629,14 @@ function Workspace() {
                           }
                           className="action-button reject"
                         >
-                          Devolver
+                          Return
                         </button>
                         <button
                           disabled={processingId === ticket.id}
                           onClick={() => openWorkflowAction(ticket, "complete")}
                           className="action-button approve"
                         >
-                          Completar
+                          Complete
                         </button>
                       </TicketCard>
                     )}
@@ -1648,21 +1648,21 @@ function Workspace() {
               <section className="space-y-6">
                 <div>
                   <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">
-                    PRODUCCIÓN / RESUMEN
+                    PRODUCTION / OVERVIEW
                   </p>
                   <h2 className="mt-2 text-2xl font-semibold text-white">
-                    Estado de {production.name}
+                    Status of {production.name}
                   </h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    Carga actual y progreso del equipo en tiempo real.
+                    Current workload and team progress in real time.
                   </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    ["Total", tickets.length, "Todas las tareas"],
-                    ["Por revisar", pending.length, "Requieren decisión"],
-                    ["En curso", activeWork.length, "Asignadas, en proceso o QC"],
-                    ["Completadas", completed.length, "Aprobadas por QC"],
+                    ["Total", tickets.length, "All tasks"],
+                    ["Pending review", pending.length, "Require a decision"],
+                    ["In progress", activeWork.length, "Assigned, in progress, or in QC"],
+                    ["Completed", completed.length, "Approved by QC"],
                   ].map(([label, value, description]) => (
                     <article key={label as string} className="workspace-card rounded-2xl border border-slate-700 bg-[#101b2b]/90 p-5">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
@@ -1672,7 +1672,7 @@ function Workspace() {
                   ))}
                 </div>
                 <section className="workspace-panel rounded-3xl border border-slate-700/70 bg-[#101b2b]/90 p-5">
-                  <h3 className="font-semibold text-white">Progreso por área</h3>
+                  <h3 className="font-semibold text-white">Progress by department</h3>
                   <div className="mt-5 space-y-5">
                     {departmentMetrics.map((metric) => {
                       const completion = metric.total ? Math.round((metric.completed / metric.total) * 100) : 0;
@@ -1680,7 +1680,7 @@ function Workspace() {
                         <div key={metric.department}>
                           <div className="flex justify-between gap-4 text-sm">
                             <p className="font-medium text-slate-200">{departmentLabel[metric.department]}</p>
-                            <p className="text-slate-400">{metric.completed}/{metric.total} completadas · {metric.active} activas</p>
+                            <p className="text-slate-400">{metric.completed}/{metric.total} completed · {metric.active} active</p>
                           </div>
                           <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
                             <div className="h-full rounded-full bg-cyan-300 transition-all" style={{ width: `${completion}%` }} />
@@ -1691,13 +1691,13 @@ function Workspace() {
                   </div>
                 </section>
                 <section className="workspace-panel rounded-3xl border border-slate-700/70 bg-[#101b2b]/90 p-5">
-                  <h3 className="font-semibold text-white">Carga por artista</h3>
+                  <h3 className="font-semibold text-white">Artist workload</h3>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {activeMembers.filter((member) => member.role === "artist").length === 0 ? (
-                      <p className="text-sm text-slate-500">Aún no hay artistas activos en esta producción.</p>
+                      <p className="text-sm text-slate-500">There are no active artists in this production yet.</p>
                     ) : activeMembers.filter((member) => member.role === "artist").map((member) => {
                       const assigned = activeWork.filter((ticket) => ticket.assigned_to_uid === member.uid).length;
-                      return <article key={member.uid} className="workspace-card flex items-center gap-3 rounded-xl border border-slate-700 bg-[#162337] px-4 py-3"><UserAvatar profile={memberAvatarProfile(member)} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} /><div><p className="font-medium text-slate-100">{memberDisplayName(member)}</p><p className="mt-1 text-xs text-slate-400">{member.department ? departmentLabel[member.department] : "Sin área"} · {assigned} tareas activas</p></div></article>;
+                      return <article key={member.uid} className="workspace-card flex items-center gap-3 rounded-xl border border-slate-700 bg-[#162337] px-4 py-3"><UserAvatar profile={memberAvatarProfile(member)} apiBaseUrl={apiBaseUrl} getAuthHeaders={getAuthHeaders} /><div><p className="font-medium text-slate-100">{memberDisplayName(member)}</p><p className="mt-1 text-xs text-slate-400">{member.department ? departmentLabel[member.department] : "No department"} · {assigned} active tasks</p></div></article>;
                     })}
                   </div>
                 </section>
@@ -1708,12 +1708,12 @@ function Workspace() {
                 <div className="workspace-panel mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700/70 bg-[#101b2b]/90 p-4">
                   <div>
                     <h2 className="font-semibold text-white">
-                      {canWork ? "Mis tareas asignadas" : "Área de producción"}
+                      {canWork ? "My assigned tasks" : "Production area"}
                     </h2>
                     <p className="mt-1 text-xs text-slate-500">
                       {canWork
-                        ? "Solo puedes avanzar las tareas asignadas a tu usuario."
-                        : "Asigna y sigue el trabajo por departamento."}
+                        ? "You can only advance tasks assigned to your account."
+                        : "Assign and track work by department."}
                     </p>
                   </div>
                   {!canWork && (
@@ -1725,16 +1725,16 @@ function Workspace() {
                       className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-slate-100"
                     >
                       <option value="vfx">VFX</option>
-                      <option value="sound">Sonido</option>
+                      <option value="sound">Sound</option>
                       <option value="color">Color</option>
-                      <option value="editorial">Edición</option>
+                      <option value="editorial">Editorial</option>
                     </select>
                   )}
                 </div>
                 <section className="grid gap-6 lg:grid-cols-3">
                   <TicketColumn
-                    title="Asignadas"
-                    description={`${departmentLabel[departmentFilter]} · listas para iniciar`}
+                    title="Assigned"
+                    description={`${departmentLabel[departmentFilter]} · ready to start`}
                     tickets={assigned}
                     loading={loading}
                   >
@@ -1746,15 +1746,15 @@ function Workspace() {
                             onClick={() => startWork(ticket)}
                             className="action-button approve"
                           >
-                            Iniciar trabajo
+                            Start work
                           </button>
                         )}
                       </TicketCard>
                     )}
                   </TicketColumn>
                   <TicketColumn
-                    title="En proceso"
-                    description="El artista trabaja y luego envía a QC"
+                    title="In progress"
+                    description="The artist works and then submits to QC"
                     tickets={inProgress}
                     loading={loading}
                   >
@@ -1773,15 +1773,15 @@ function Workspace() {
                             }
                             className="action-button approve"
                           >
-                            Enviar a QC
+                            Submit to QC
                           </button>
                         )}
                       </TicketCard>
                     )}
                   </TicketColumn>
                   <TicketColumn
-                    title="Listas para QC"
-                    description="Esperando revisión del supervisor"
+                    title="Ready for QC"
+                    description="Waiting for supervisor review"
                     tickets={qualityQueue.filter(
                       (ticket) => ticket.department === departmentFilter,
                     )}
@@ -1797,30 +1797,30 @@ function Workspace() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">
-                      PRODUCCIÓN / ADMINISTRACIÓN
+                      PRODUCTION / ADMINISTRATION
                     </p>
                     <h2 className="mt-2 text-2xl font-semibold text-white">
-                      Gestionar equipo
+                      Manage team
                     </h2>
                     <p className="mt-1 text-sm text-slate-400">
-                      Invita personas, revisa respuestas y actualiza sus
-                      responsabilidades.
+                      Invite people, review responses, and update their
+                      responsibilities.
                     </p>
                   </div>
                   <button
                     onClick={() => void refreshTeam()}
                     className="action-button reject flex items-center gap-2"
                   >
-                    <RefreshCw className="h-3.5 w-3.5" /> Actualizar
+                    <RefreshCw className="h-3.5 w-3.5" /> Refresh
                   </button>
                 </div>
                 <section className="workspace-panel rounded-3xl border border-slate-700/70 bg-[#101b2b]/90 p-5 sm:p-6">
                   <h3 className="font-semibold text-white">
-                    {editingMemberUid ? "Editar miembro" : "Invitar integrante"}
+                    {editingMemberUid ? "Edit member" : "Invite member"}
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    El invitado verá una notificación y debe aceptar antes de
-                    acceder a esta producción.
+                    The invitee will receive a notification and must accept it
+                    before accessing this production.
                   </p>
                   <form
                     onSubmit={addMember}
@@ -1844,7 +1844,7 @@ function Workspace() {
                       }
                       className="workspace-input text-sm"
                     >
-                      <option value="artist">Artista</option>
+                      <option value="artist">Artist</option>
                       <option value="supervisor">Supervisor</option>
                     </select>
                     <select
@@ -1856,15 +1856,15 @@ function Workspace() {
                       className="workspace-input text-sm disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <option value="vfx">VFX</option>
-                      <option value="sound">Sonido</option>
+                      <option value="sound">Sound</option>
                       <option value="color">Color</option>
-                      <option value="editorial">Edición</option>
+                      <option value="editorial">Editorial</option>
                     </select>
                     <div className="flex gap-2 lg:justify-end">
                       <button disabled={!selectedMember} className="flex-1 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-bold text-cyan-950 transition hover:-translate-y-0.5 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none">
                         {editingMemberUid
-                          ? "Guardar cambios"
-                          : "Enviar invitación"}
+                          ? "Save changes"
+                          : "Send invitation"}
                       </button>
                       {editingMemberUid && (
                         <button
@@ -1877,7 +1877,7 @@ function Workspace() {
                           }}
                           className="action-button reject"
                         >
-                          Cancelar
+                          Cancel
                         </button>
                       )}
                     </div>
@@ -1887,10 +1887,10 @@ function Workspace() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="font-semibold text-white">
-                        Invitaciones pendientes
+                        Pending invitations
                       </h3>
                       <p className="mt-1 text-xs text-slate-400">
-                        Aún no tienen acceso a los tickets.
+                        They do not have access to tickets yet.
                       </p>
                     </div>
                     <span className="rounded-full bg-amber-400/15 px-2.5 py-1 text-xs font-semibold text-amber-300">
@@ -1900,7 +1900,7 @@ function Workspace() {
                   <div className="mt-4 space-y-2">
                     {pendingMembers.length === 0 ? (
                       <p className="text-sm text-slate-500">
-                        No hay invitaciones pendientes.
+                        There are no pending invitations.
                       </p>
                     ) : (
                       pendingMembers.map((member) => (
@@ -1914,11 +1914,11 @@ function Workspace() {
                             <p className="truncate text-slate-200">{memberDisplayName(member)}</p>
                             {member.username && <p className="truncate text-[11px] text-cyan-300">@{member.username}</p>}
                             <p className="mt-1 text-xs capitalize text-slate-400">
-                              {member.role}
+                              {roleLabel[member.role]}
                               {member.department
                                 ? ` · ${departmentLabel[member.department]}`
                                 : ""}{" "}
-                              · esperando respuesta
+                              · awaiting response
                             </p>
                             </div>
                           </div>
@@ -1927,13 +1927,13 @@ function Workspace() {
                               onClick={() => editMember(member)}
                               className="action-button reject"
                             >
-                              Editar
+                              Edit
                             </button>
                             <button
                               onClick={() => setMemberToRemove(member)}
                               className="action-button reject"
                             >
-                              Cancelar invitación
+                              Cancel invitation
                             </button>
                           </div>
                         </div>
@@ -1945,10 +1945,10 @@ function Workspace() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="font-semibold text-white">
-                        Miembros activos
+                        Active members
                       </h3>
                       <p className="mt-1 text-xs text-slate-400">
-                        Ya aceptaron y pueden trabajar según su rol.
+                        They have accepted and can work according to their role.
                       </p>
                     </div>
                     <span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-xs font-semibold text-cyan-300">
@@ -1968,7 +1968,7 @@ function Workspace() {
                             <p className="truncate font-medium text-slate-100">{memberDisplayName(member)}</p>
                             {member.username && <p className="truncate text-[11px] text-cyan-300">@{member.username}</p>}
                             <p className="mt-1 text-xs capitalize text-slate-400">
-                              {member.role}
+                              {roleLabel[member.role]}
                               {member.department
                                 ? ` · ${departmentLabel[member.department]}`
                                 : ""}
@@ -1981,13 +1981,13 @@ function Workspace() {
                                 onClick={() => editMember(member)}
                                 className="text-xs text-cyan-300 hover:underline"
                               >
-                                Gestionar rol
+                                Manage role
                               </button>
                               <button
                                 onClick={() => setMemberToRemove(member)}
                                 className="text-xs text-rose-300 hover:underline"
                               >
-                                Retirar
+                                Remove
                               </button>
                             </div>
                           )}
@@ -2001,38 +2001,38 @@ function Workspace() {
             {view === "history" && (
               <section>
                 <div className="mb-6">
-                  <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">PRODUCCIÓN / TRAZABILIDAD</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">Historial de entregas</h2>
-                  <p className="mt-1 text-sm text-slate-400">Busca decisiones pasadas y abre su línea de tiempo completa.</p>
+                  <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">PRODUCTION / TRACEABILITY</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">Delivery history</h2>
+                  <p className="mt-1 text-sm text-slate-400">Find past decisions and open their complete timeline.</p>
                 </div>
                 <div className="workspace-panel mb-6 grid gap-3 rounded-2xl border border-slate-700 bg-[#101b2b]/90 p-4 md:grid-cols-3">
                   <input
                     value={historySearch}
                     onChange={(event) => setHistorySearch(event.target.value)}
-                    placeholder="Buscar toma, nota o artista…"
+                    placeholder="Search shot, note, or artist…"
                     className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300"
                   />
                   <select value={historyDepartment} onChange={(event) => setHistoryDepartment(event.target.value as "all" | Department)} className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-slate-200">
-                    <option value="all">Todas las áreas</option>
+                    <option value="all">All departments</option>
                     {(Object.keys(departmentLabel) as Department[]).map((department) => <option key={department} value={department}>{departmentLabel[department]}</option>)}
                   </select>
                   <select value={historyArtist} onChange={(event) => setHistoryArtist(event.target.value)} className="rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-slate-200">
-                    <option value="all">Todo el equipo</option>
+                    <option value="all">Entire team</option>
                     {activeMembers.filter((member) => member.role === "artist").map((member) => <option key={member.uid} value={member.uid}>{memberDisplayName(member)}</option>)}
                   </select>
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
                   <TicketColumn
-                    title={`Completadas (${filteredCompleted.length})`}
-                    description="Entregables aprobados por control de calidad"
+                    title={`Completed (${filteredCompleted.length})`}
+                    description="Deliverables approved by quality control"
                     tickets={filteredCompleted}
                     loading={loading}
                   >
                     {(ticket) => <TicketCard key={ticket.id} ticket={ticket} onViewActivity={(item) => void openTicketActivity(item)} />}
                   </TicketColumn>
                   <TicketColumn
-                    title={`Rechazadas (${filteredRejected.length})`}
-                    description="Notas que no avanzaron a producción"
+                    title={`Rejected (${filteredRejected.length})`}
+                    description="Notes that did not advance to production"
                     tickets={filteredRejected}
                     loading={loading}
                   >
@@ -2052,28 +2052,28 @@ function Workspace() {
               className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-[#101b2b] p-6 shadow-2xl"
             >
               <p className="text-xs font-bold tracking-[0.2em] text-rose-300">
-                FRAMEFLOW / EQUIPO
+                FRAMEFLOW / TEAM
               </p>
               <h2
                 id="remove-member-title"
                 className="mt-2 text-xl font-semibold text-white"
               >
-                Retirar integrante
+                Remove member
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Vas a retirar a{" "}
+                You are about to remove{" "}
                 <span className="font-semibold text-white">
                   {memberDisplayName(memberToRemove)}
                 </span>
-                . Sus tareas activas volverán a <strong>Por revisar</strong>{" "}
-                para que un supervisor las reasigne.
+                . Their active tasks will return to <strong>Pending review</strong>{" "}
+                so a supervisor can reassign them.
               </p>
               <div className="mt-6 flex justify-end gap-3">
                 <button
                   onClick={() => setMemberToRemove(null)}
                   className="action-button reject"
                 >
-                  Cancelar
+                  Cancel
                 </button>
                 <button
                   onClick={() => {
@@ -2082,7 +2082,7 @@ function Workspace() {
                   }}
                   className="rounded-lg bg-rose-400 px-4 py-2 text-sm font-bold text-rose-950 hover:bg-rose-300"
                 >
-                  Retirar integrante
+                  Remove member
                 </button>
               </div>
             </section>
@@ -2096,15 +2096,15 @@ function Workspace() {
               aria-labelledby="remove-evidence-title"
               className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-[#101b2b] p-6 shadow-2xl"
             >
-              <p className="text-xs font-bold tracking-[0.2em] text-rose-300">FRAMEFLOW / ENTREGA</p>
-              <h2 id="remove-evidence-title" className="mt-2 text-xl font-semibold text-white">Quitar evidencia</h2>
+              <p className="text-xs font-bold tracking-[0.2em] text-rose-300">FRAMEFLOW / DELIVERY</p>
+              <h2 id="remove-evidence-title" className="mt-2 text-xl font-semibold text-white">Remove evidence</h2>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Se eliminará <span className="font-semibold text-white">{evidenceToRemove.evidence_name ?? "esta evidencia"}</span> de esta tarea y del almacenamiento privado. Podrás adjuntar otra antes de enviarla a QC.
+                <span className="font-semibold text-white">{evidenceToRemove.evidence_name ?? "This evidence"}</span> will be removed from this task and from private storage. You can attach another file before submitting it to QC.
               </p>
               <div className="mt-6 flex justify-end gap-3">
-                <button onClick={() => setEvidenceToRemove(null)} disabled={processingId === evidenceToRemove.id} className="action-button reject">Cancelar</button>
+                <button onClick={() => setEvidenceToRemove(null)} disabled={processingId === evidenceToRemove.id} className="action-button reject">Cancel</button>
                 <button onClick={() => void removeEvidence(evidenceToRemove)} disabled={processingId === evidenceToRemove.id} className="rounded-lg bg-rose-400 px-4 py-2 text-sm font-bold text-rose-950 hover:bg-rose-300">
-                  {processingId === evidenceToRemove.id ? "Quitando…" : "Quitar evidencia"}
+                  {processingId === evidenceToRemove.id ? "Removing…" : "Remove evidence"}
                 </button>
               </div>
             </section>
@@ -2118,15 +2118,15 @@ function Workspace() {
               aria-labelledby="remove-delivery-link-title"
               className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-[#101b2b] p-6 shadow-2xl"
             >
-              <p className="text-xs font-bold tracking-[0.2em] text-rose-300">FRAMEFLOW / ENTREGA</p>
-              <h2 id="remove-delivery-link-title" className="mt-2 text-xl font-semibold text-white">Quitar enlace de entrega</h2>
+              <p className="text-xs font-bold tracking-[0.2em] text-rose-300">FRAMEFLOW / DELIVERY</p>
+              <h2 id="remove-delivery-link-title" className="mt-2 text-xl font-semibold text-white">Remove delivery link</h2>
               <p className="mt-3 break-words text-sm leading-6 text-slate-300">
-                Este enlace dejará de estar asociado a la tarea. Podrás añadir otro antes de enviarla a QC.
+                This link will no longer be associated with the task. You can add another before submitting it to QC.
               </p>
               <div className="mt-6 flex justify-end gap-3">
-                <button onClick={() => setDeliveryLinkToRemove(null)} disabled={processingId === deliveryLinkToRemove.id} className="action-button reject">Cancelar</button>
+                <button onClick={() => setDeliveryLinkToRemove(null)} disabled={processingId === deliveryLinkToRemove.id} className="action-button reject">Cancel</button>
                 <button onClick={() => void removeDeliveryLink(deliveryLinkToRemove)} disabled={processingId === deliveryLinkToRemove.id} className="rounded-lg bg-rose-400 px-4 py-2 text-sm font-bold text-rose-950 hover:bg-rose-300">
-                  {processingId === deliveryLinkToRemove.id ? "Quitando…" : "Quitar enlace"}
+                  {processingId === deliveryLinkToRemove.id ? "Removing…" : "Remove link"}
                 </button>
               </div>
             </section>
@@ -2148,16 +2148,16 @@ function Workspace() {
                 className="mt-2 text-xl font-semibold text-white"
               >
                 {workflowAction.type === "assign"
-                  ? "Asignar artista"
+                  ? "Assign artist"
                   : workflowAction.type === "send_qc"
-                    ? "Enviar a control de calidad"
+                    ? "Submit to quality control"
                     : workflowAction.type === "complete"
-                      ? "Completar tarea"
-                      : "Devolver para corrección"}
+                      ? "Complete task"
+                      : "Return for corrections"}
               </h2>
               {workflowAction.type === "assign" ? (
                 <label className="mt-5 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Artista del equipo
+                  Team artist
                   <select
                     autoFocus
                     value={assignedArtistId}
@@ -2166,7 +2166,7 @@ function Workspace() {
                     }
                     className="mt-2 w-full rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300"
                   >
-                    <option value="">Selecciona un artista…</option>
+                    <option value="">Select an artist…</option>
                     {members
                       .filter(
                         (member) =>
@@ -2185,15 +2185,15 @@ function Workspace() {
                 <>
                   <p className="mt-2 text-sm text-slate-400">
                     {workflowAction.type === "send_qc"
-                      ? "Añade contexto para que el supervisor pueda revisar el entregable."
+                      ? "Add context so the supervisor can review the deliverable."
                       : workflowAction.type === "complete"
-                        ? "Puedes dejar una observación final antes de archivar el trabajo."
-                        : "Describe claramente los cambios que el artista debe realizar."}
+                        ? "You can leave a final note before archiving the work."
+                        : "Clearly describe the changes the artist must make."}
                   </p>
                   <label className="mt-5 block text-xs font-semibold uppercase tracking-wide text-slate-400">
                     {workflowAction.type === "send_qc"
-                      ? "Nota del artista"
-                      : "Feedback del supervisor"}
+                      ? "Artist note"
+                      : "Supervisor feedback"}
                     <textarea
                       autoFocus
                       value={workflowNote}
@@ -2202,8 +2202,8 @@ function Workspace() {
                       rows={4}
                       placeholder={
                         workflowAction.type === "return_for_rework"
-                          ? "Ej. Corregir los bordes del micrófono junto al cabello."
-                          : "Comentario opcional…"
+                          ? "E.g. Fix the microphone edges near the hair."
+                          : "Optional comment…"
                       }
                       className="mt-2 w-full rounded-lg border border-slate-600 bg-[#162337] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300"
                     />
@@ -2211,7 +2211,7 @@ function Workspace() {
                   {workflowAction.type === "send_qc" && (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Enlace de entrega <span className="normal-case text-slate-500">(opcional)</span>
+                        Delivery link <span className="normal-case text-slate-500">(optional)</span>
                         <input
                           type="url"
                           value={deliveryLink}
@@ -2222,7 +2222,7 @@ function Workspace() {
                         />
                       </label>
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Evidencia visual <span className="normal-case text-slate-500">(opcional, máx. 5 MB{workflowAction.ticket.evidence_gcs_uri ? "; reemplaza la actual" : ""})</span>
+                        Visual evidence <span className="normal-case text-slate-500">(optional, max. 5 MB{workflowAction.ticket.evidence_gcs_uri ? "; replaces the current file" : ""})</span>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp,application/pdf"
@@ -2240,7 +2240,7 @@ function Workspace() {
                   disabled={processingId === workflowAction.ticket.id}
                   className="action-button reject"
                 >
-                  Cancelar
+                  Cancel
                 </button>
                 <button
                   onClick={() => void confirmWorkflowAction()}
@@ -2248,14 +2248,14 @@ function Workspace() {
                   className="action-button approve"
                 >
                   {processingId === workflowAction.ticket.id
-                    ? "Guardando…"
+                    ? "Saving…"
                     : workflowAction.type === "assign"
-                      ? "Asignar tarea"
+                      ? "Assign task"
                       : workflowAction.type === "send_qc"
-                        ? "Enviar a QC"
+                        ? "Submit to QC"
                         : workflowAction.type === "complete"
-                          ? "Completar"
-                          : "Devolver tarea"}
+                          ? "Complete"
+                          : "Return task"}
                 </button>
               </div>
             </section>
@@ -2271,23 +2271,23 @@ function Workspace() {
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">FRAMEFLOW / HISTORIAL</p>
+                  <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">FRAMEFLOW / HISTORY</p>
                   <h2 id="activity-dialog-title" className="mt-2 text-xl font-semibold text-white">
-                    Actividad · {activityTicket.shot_id}
+                    Activity · {activityTicket.shot_id}
                   </h2>
                 </div>
-                <button onClick={() => setActivityTicket(null)} className="text-sm text-slate-400 hover:text-white">Cerrar</button>
+                <button onClick={() => setActivityTicket(null)} className="text-sm text-slate-400 hover:text-white">Close</button>
               </div>
               <div className="mt-5 max-h-[55vh] space-y-4 overflow-y-auto pr-2">
                 {activityLoading ? (
-                  <p className="text-sm text-slate-400">Cargando actividad…</p>
+                  <p className="text-sm text-slate-400">Loading activity…</p>
                 ) : ticketActivity.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-500">Esta tarea fue creada antes del historial detallado.</p>
+                  <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-500">This task was created before detailed activity tracking was available.</p>
                 ) : ticketActivity.map((item) => (
                   <article key={item.id} className="border-l-2 border-cyan-400/50 pl-4">
                     <p className="text-sm font-semibold text-white">{item.action}</p>
                     <p className="mt-1 text-xs text-slate-400">
-                      {item.actor_name ?? item.actor_uid} · {new Date(item.created_at).toLocaleString()}
+                      {item.actor_name ?? item.actor_uid} · {new Date(item.created_at).toLocaleString("en-US")}
                     </p>
                     {item.detail && <p className="mt-2 text-sm leading-6 text-slate-300">{item.detail}</p>}
                   </article>

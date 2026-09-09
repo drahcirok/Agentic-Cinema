@@ -14,15 +14,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FrameFlow | Postproducción bajo control",
+  title: "FrameFlow | Post-production under control",
   description:
-    "Convierte notas del director en tareas trazables para productores, supervisores y artistas de postproducción.",
+    "Turn director notes into trackable tasks for producers, supervisors, and post-production artists.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="es"
+      lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col"><AuthProvider>{children}</AuthProvider></body>

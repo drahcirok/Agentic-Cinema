@@ -66,7 +66,7 @@ def _default_display_name(user: CurrentUser) -> str:
         return user.name.strip()[:80]
     if user.email:
         return user.email.split("@", 1)[0][:80]
-    return "Usuario de FrameFlow"
+    return "FrameFlow user"
 
 
 def _base_username(user: CurrentUser) -> str:
@@ -378,5 +378,5 @@ def create_user_profile_repository(db: Session | None = None) -> UserProfileData
     if settings.is_firestore:
         return FirestoreUserProfileRepository(collection_name=settings.user_profile_collection)
     if db is None:
-        raise RuntimeError("Se requiere una sesión SQLAlchemy para SQLite.")
+        raise RuntimeError("A SQLAlchemy session is required for SQLite.")
     return UserProfileRepository(db)

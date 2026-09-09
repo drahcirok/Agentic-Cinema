@@ -5,11 +5,11 @@ from app.models.ticket import ReviewDecision, Ticket, TicketCreate, TicketReview
 
 
 class TicketNotFoundError(Exception):
-    """El ticket solicitado no existe en el almacén actual."""
+    """The requested ticket does not exist in the current store."""
 
 
 class TicketStore:
-    """Almacén temporal en memoria; reemplazable por una base de datos después."""
+    """Temporary in-memory store that can be replaced with a database later."""
 
     def __init__(self) -> None:
         self._tickets: dict[UUID, Ticket] = {}

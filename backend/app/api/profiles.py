@@ -101,10 +101,10 @@ async def update_my_profile(
     except InvalidUsernameError as exc:
         raise HTTPException(
             status_code=422,
-            detail="El usuario debe tener entre 3 y 30 caracteres y usar solo letras, números, punto, guion o guion bajo.",
+            detail="The username must be between 3 and 30 characters and contain only letters, numbers, periods, hyphens, or underscores.",
         ) from exc
     except UsernameUnavailableError as exc:
-        raise HTTPException(status_code=409, detail="Ese nombre de usuario ya está ocupado.") from exc
+        raise HTTPException(status_code=409, detail="That username is already taken.") from exc
 
 
 @router.get("/search", response_model=list[UserProfile])
@@ -124,9 +124,9 @@ async def search_profiles(
             if member.uid == user.uid
         )
         if caller.role is not ProductionRole.PRODUCER or caller.membership_status is not MembershipStatus.ACCEPTED:
-            raise HTTPException(status_code=403, detail="Solo el productor puede buscar e invitar integrantes.")
+            raise HTTPException(status_code=403, detail="Only the producer can search for and invite members.")
     except (ValueError, StopIteration, ProductionNotFoundError) as exc:
-        raise HTTPException(status_code=404, detail="Producción no encontrada o sin acceso.") from exc
+        raise HTTPException(status_code=404, detail="Production not found or access denied.") from exc
     results = repo.search(q, exclude_uid=user.uid)
     if not results and is_valid_firebase_uid(q):
         exact = resolve_profile(q.strip(), repo)
@@ -144,10 +144,10 @@ async def upload_my_avatar(
     repo.ensure(user)
     mime_type = (avatar.content_type or "").lower()
     if mime_type not in ALLOWED_AVATAR_MIME_TYPES:
-        raise HTTPException(status_code=415, detail="La foto debe ser JPG, PNG o WEBP.")
+        raise HTTPException(status_code=415, detail="The photo must be a JPG, PNG, or WEBP image.")
     content = await avatar.read(MAX_AVATAR_SIZE_BYTES + 1)
     if len(content) > MAX_AVATAR_SIZE_BYTES:
-        raise HTTPException(status_code=413, detail="La foto no puede superar 2 MB.")
+        raise HTTPException(status_code=413, detail="The photo cannot exceed 2 MB.")
     # The MIME type is authoritative. A renamed file must not be stored and
     # later served with a contradictory extension/content type.
     extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime_type]
@@ -182,11 +182,11 @@ async def download_profile_avatar(
     repo.ensure(user)
     gs_uri = repo.avatar_uri(uid)
     if not gs_uri:
-        raise HTTPException(status_code=404, detail="Este perfil no tiene una foto personalizada.")
+        raise HTTPException(status_code=404, detail="This profile does not have a custom photo.")
     try:
         content = video_storage.download_avatar(gs_uri)
     except (StorageConfigurationError, ValueError):
-        raise HTTPException(status_code=404, detail="Foto de perfil no disponible.") from None
+        raise HTTPException(status_code=404, detail="Profile photo unavailable.") from None
     suffix = Path(gs_uri).suffix.lower()
     mime_type = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(suffix, "image/jpeg")
     return Response(content=content, media_type=mime_type, headers={"Cache-Control": "private, max-age=300"})
